@@ -4,6 +4,24 @@ All notable changes to this project are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `.gitattributes`, so text files are stored with LF and binaries are never
+  rewritten by line-ending conversion. Without it, a script committed from
+  Windows fails on Linux with `bad interpreter`.
+- `CODE_OF_CONDUCT.md`.
+- The core suite now runs in CI across Linux, macOS and Windows on Node 18, 20
+  and 22 — the range `package.json` claims to support.
+
+### Changed
+
+- Test fixtures no longer contain content taken from real conversations. Where a
+  real chat prompted a fixture, the structure that made it useful was kept and
+  the words replaced with invented equivalents; the mixed-script case that
+  exercises text-direction detection is preserved.
+
 ## [1.1.5] — 2026-08-21
 
 ### Fixed

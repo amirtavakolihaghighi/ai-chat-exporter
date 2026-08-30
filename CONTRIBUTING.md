@@ -9,6 +9,28 @@ npm start           # the desktop app
 npm run ext:build   # the browser extension, into extension/dist/
 ```
 
+## The test suites, and one rule about them
+
+321 checks across four suites: 111 in the core, 61 in the extractor suite, 83
+end-to-end, and 66 for the extension. Those numbers are what the suites report
+today, not an aspiration.
+
+```bash
+npm test               # core: conversion, filenames, selection, merge, bidi
+npm run test:electron  # the real extractor against DOM fixtures, PDF and images
+npm run test:e2e       # boots the app and drives the real UI to files on disk
+npm run test:extension # manifests, the built bundles, browser-side exports
+```
+
+**The suites never touch your real data, and they must stay that way.** The
+end-to-end suite points the application at a throwaway profile directory before
+it boots, and every export is written to a temporary folder. Your settings, your
+library and your exported files are never read or written by a test run.
+
+If you add a test that writes anything, redirect it the same way. Discovering
+this rule by having your own library wiped is not a good introduction to a
+project.
+
 ## Before opening a pull request
 
 ```bash
