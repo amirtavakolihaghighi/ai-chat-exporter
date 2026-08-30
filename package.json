@@ -1,0 +1,91 @@
+{
+  "name": "ai-chat-extractor",
+  "productName": "AI Chat Extractor",
+  "version": "1.1.5",
+  "description": "Export AI chat conversations from ChatGPT, Claude, Gemini, DeepSeek and more to PDF, Word, Markdown, HTML, JSON, images or source files. Desktop app and browser extension.",
+  "main": "src/main/main.js",
+  "author": "Amir Tavakoli Haghighi",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node test/pipeline.test.js",
+    "test:electron": "electron test/electron.test.js",
+    "test:e2e": "electron test/e2e.test.js",
+    "test:extension": "electron extension/test/extension.test.js",
+    "ext:build": "node extension/build.js",
+    "ext:zip": "node extension/build.js --zip",
+    "ext:watch": "node extension/build.js --watch --chrome",
+    "shot": "electron test/screenshot.js",
+    "icon": "electron scripts/make-icon.js",
+    "predist": "node scripts/prepare-win-build.js",
+    "dist": "electron-builder --win",
+    "predist:portable": "node scripts/prepare-win-build.js",
+    "dist:portable": "electron-builder --win portable",
+    "bench": "electron test/benchmark.js"
+  },
+  "build": {
+    "appId": "com.amirth.aichatextractor",
+    "productName": "AI Chat Extractor",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "!**/*.map"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "electronDist": "node_modules/electron/dist"
+  },
+  "dependencies": {
+    "docx": "^9.5.1",
+    "jszip": "^3.10.1",
+    "marked": "^15.0.7",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.28.1"
+  },
+  "keywords": [
+    "chatgpt",
+    "claude",
+    "gemini",
+    "deepseek",
+    "export",
+    "markdown",
+    "docx",
+    "pdf",
+    "electron",
+    "browser-extension",
+    "chrome-extension",
+    "firefox",
+    "obsidian",
+    "archive",
+    "conversation"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amirtavakolihaghighi/ai-chat-exporter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/amirtavakolihaghighi/ai-chat-exporter/issues"
+  },
+  "homepage": "https://github.com/amirtavakolihaghighi/ai-chat-exporter#readme",
+  "private": true
+}

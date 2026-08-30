@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  core:
+    # The conversion core is plain Node with no browser and no display, so it
+    # can be proved everywhere cheaply. package.json declares node >= 18; this
+    # is what actually holds us to that claim.
+    name: Core suite (Node ${{ matrix.node }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Conversion, filenames, selection, merge, bidi
+        run: npm test
+
+  extension-build:
+    name: Extension bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build for Chrome and Firefox
+        run: npm run ext:build
+      # Manifest V3 forbids remote code, and nothing Node-only may survive into
+      # a bundle. Cheap to check, and expensive to discover after publishing.
+      - name: Check bundles are self-contained
+        run: |
+          set -e
+          for f in extension/dist/chrome/*.js extension/dist/firefox/*.js; do
+            if grep -qE 'require\("(fs|path|os|crypto|node:)' "$f"; then
+              echo "Node built-in leaked into $f"; exit 1
+            fi
+            if grep -q 'importScripts(' "$f"; then
+              echo "Remote script loading in $f"; exit 1
+            fi
+          done
+          echo "bundles are self-contained"
+
+  browser-suites:
+    name: Browser suites (Electron)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run icon
+      - run: npm run ext:build
+      # These drive a real Chromium, so they need the Windows runner's desktop.
+      - name: Extractor and capture
+        run: npm run test:electron
+      - name: End-to-end
+        run: npm run test:e2e
+      - name: Extension
+        run: npm run test:extension
+      - name: Reading speed and completeness
+        run: npm run bench
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            test/results.txt
+            test/e2e-results.txt
+            test/benchmark.txt
+            extension/test/results.txt

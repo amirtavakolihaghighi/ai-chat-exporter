@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';">
+<title>AI Chat Extractor</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark">AI</span>
+    <span class="brandname">Chat Extractor</span>
+  </div>
+
+  <form class="urlbar" id="urlForm">
+    <input id="urlInput" type="text" spellcheck="false" autocomplete="off"
+           placeholder="Paste a chat share link — chatgpt.com/share/…, claude.ai/share/…, gemini, deepseek, grok, gapgpt…">
+    <button type="submit" class="btn primary" id="loadBtn">Load</button>
+  </form>
+
+  <div class="topmeta">
+    <span class="badge" id="providerBadge" title="Which selector pack matched this site">no page</span>
+  </div>
+</header>
+
+<main class="layout">
+
+  <section class="viewer">
+    <div class="viewer-toolbar">
+      <button class="icon" id="backBtn" title="Back" disabled>&#8592;</button>
+      <button class="icon" id="fwdBtn" title="Forward" disabled>&#8594;</button>
+      <button class="icon" id="reloadBtn" title="Reload">&#10227;</button>
+      <span class="url-display" id="urlDisplay">Nothing loaded</span>
+      <span class="spacer"></span>
+      <button class="icon" id="zoomOutBtn" title="Zoom out">&minus;</button>
+      <span class="zoomlabel" id="zoomLabel">100%</span>
+      <button class="icon" id="zoomInBtn" title="Zoom in">+</button>
+      <button class="icon" id="devtoolsBtn" title="Inspect the loaded page">&#9881;</button>
+    </div>
+
+    <div class="viewer-stage" id="viewerStage">
+      <div class="placeholder" id="placeholder">
+        <h2>Paste a share link to begin</h2>
+        <p>The chat loads in a real browser pane below. Because it is a real
+           browser with its own cookie jar, you can also <strong>sign in to a
+           provider</strong> and export private conversations that were never
+           shared.</p>
+        <ul class="hintlist">
+          <li>Long chats are scrolled automatically so nothing is missed.</li>
+          <li>Collapsed reasoning blocks are unfolded before capture.</li>
+          <li>Images are downloaded and embedded, so expiring links still render.</li>
+        </ul>
+      </div>
+      <webview id="view" partition="persist:aichats" allowpopups
+               webpreferences="backgroundThrottling=no"></webview>
+      <div class="busy" id="busy" hidden><div class="spinner"></div><span id="busyText">Working…</span></div>
+    </div>
+  </section>
+
+  <aside class="sidebar">
+    <nav class="tabs">
+      <button class="tab active" data-tab="export">Export</button>
+      <button class="tab" data-tab="options">Options</button>
+      <button class="tab" data-tab="batch">Batch</button>
+      <button class="tab" data-tab="merge">Merge</button>
+      <button class="tab" data-tab="library">Library</button>
+    </nav>
+
+    <!-- ------------------------------------------------------- EXPORT -->
+    <div class="panel active" data-panel="export">
+      <button class="btn big" id="extractBtn" disabled>Read this chat</button>
+      <div class="extract-status" id="extractStatus">Load a page first.</div>
+
+      <details class="preview" id="previewBox" hidden>
+        <summary>Preview and choose messages</summary>
+        <div class="selectbar">
+          <span id="selectionCount">all messages</span>
+          <span class="spacer"></span>
+          <button class="mini" data-select="all">all</button>
+          <button class="mini" data-select="none">none</button>
+          <button class="mini" data-select="assistant">answers only</button>
+          <button class="mini" data-select="user">my prompts</button>
+          <button class="mini" data-select="invert">invert</button>
+        </div>
+        <div class="preview-list" id="previewList"></div>
+      </details>
+
+      <h3>Formats</h3>
+      <div class="formats" id="formats">
+        <label><input type="checkbox" value="pdf" checked><span>PDF</span></label>
+        <label><input type="checkbox" value="md"><span>Markdown</span></label>
+        <label><input type="checkbox" value="docx"><span>Word .docx</span></label>
+        <label><input type="checkbox" value="html"><span>HTML</span></label>
+        <label><input type="checkbox" value="txt"><span>Plain text</span></label>
+        <label><input type="checkbox" value="json"><span>JSON</span></label>
+        <label><input type="checkbox" value="png"><span>PNG image</span></label>
+        <label><input type="checkbox" value="jpg"><span>JPEG image</span></label>
+        <label><input type="checkbox" value="code"><span>Code files</span></label>
+        <label><input type="checkbox" value="zip"><span>ZIP (everything)</span></label>
+      </div>
+      <p class="muted small" style="margin-top:-2px">
+        <strong>Code files</strong> writes every snippet in the chat to its own
+        source file, named by language, with a manifest listing where each came from.
+      </p>
+
+      <h3>PDF &amp; image style</h3>
+      <div class="radiorow">
+        <label><input type="radio" name="captureMode" value="clean" checked>
+          <span><strong>Clean document</strong><em>Retypeset, no site chrome, real page breaks</em></span></label>
+        <label><input type="radio" name="captureMode" value="asShown">
+          <span><strong>As shown on the site</strong><em>Pixel-faithful capture of the live page. On a very long
+          chat this may cover only part of the thread, because some sites drop
+          off-screen messages from the page entirely.</em></span></label>
+      </div>
+
+      <div class="field">
+        <label for="themeSel">Document theme</label>
+        <select id="themeSel">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="serif">Serif (print-friendly)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="outDir">Save to</label>
+        <div class="row">
+          <input id="outDir" type="text" spellcheck="false">
+          <button class="btn" id="browseBtn">Browse</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="filenameTpl">Filename template</label>
+        <input id="filenameTpl" type="text" spellcheck="false">
+        <small>Tokens: {title} {provider} {host} {date} {time} {count} {id}</small>
+      </div>
+
+      <button class="btn primary big" id="exportBtn" disabled>Export</button>
+      <label class="check"><input type="checkbox" id="openAfter"> Open the folder when done</label>
+
+      <div class="results" id="results"></div>
+
+      <h3>When a site isn't recognised</h3>
+      <p class="muted small">
+        If the reader finds nothing or grabs the wrong thing, click below and
+        then click one message in the page. It works out a CSS selector matching
+        every message and saves it as a rule for that site, which is then used
+        for every later read — including after the site changes its markup.
+        Your rules are listed under <strong>Options → Saved site rules</strong>,
+        where you can remove any of them.
+      </p>
+      <button class="btn" id="pickBtn" disabled>Pick a message by hand</button>
+      <div class="packinfo" id="packInfo"></div>
+    </div>
+
+    <!-- ------------------------------------------------------ OPTIONS -->
+    <div class="panel" data-panel="options">
+      <h3>Content</h3>
+      <label class="check"><input type="checkbox" id="optThinking"> Include reasoning / thinking blocks</label>
+      <label class="check"><input type="checkbox" id="optSystem"> Include system &amp; tool messages</label>
+      <label class="check"><input type="checkbox" id="optMeta"> Include title, source URL and date</label>
+      <label class="check"><input type="checkbox" id="optFrontmatter"> YAML frontmatter in Markdown (Obsidian)</label>
+
+      <h3>Images</h3>
+      <label class="check"><input type="checkbox" id="optEmbed"> Download and embed images</label>
+      <div class="field">
+        <label for="assetMode">Where images go</label>
+        <select id="assetMode">
+          <option value="inline">Inside the file (single self-contained file)</option>
+          <option value="sidecar">Beside the file in a _files folder</option>
+        </select>
+      </div>
+
+      <h3>Page setup (PDF)</h3>
+      <div class="grid2">
+        <div class="field">
+          <label for="pageSize">Paper</label>
+          <select id="pageSize">
+            <option>A4</option><option>Letter</option><option>Legal</option>
+            <option>A3</option><option>Tabloid</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="marginIn">Margin (in)</label>
+          <input id="marginIn" type="number" min="0" max="2" step="0.1">
+        </div>
+        <div class="field">
+          <label for="scaleIn">Scale</label>
+          <input id="scaleIn" type="number" min="0.3" max="2" step="0.05">
+        </div>
+        <div class="field">
+          <label for="fontSizeIn">Body size (px)</label>
+          <input id="fontSizeIn" type="number" min="10" max="24" step="1">
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="optLandscape"> Landscape</label>
+      <label class="check"><input type="checkbox" id="optPageNums"> Page numbers in the footer</label>
+      <label class="check"><input type="checkbox" id="optPrintBg"> Print background colours</label>
+      <label class="check"><input type="checkbox" id="optBreakTurn"> Start every message on a new page</label>
+      <label class="check"><input type="checkbox" id="optExpandLinks"> Print link targets after link text</label>
+
+      <h3>Images &amp; capture</h3>
+      <div class="grid2">
+        <div class="field">
+          <label for="jpegQ">JPEG quality</label>
+          <input id="jpegQ" type="number" min="10" max="100" step="1">
+        </div>
+        <div class="field">
+          <label for="settleMs">Scroll settle (ms)</label>
+          <input id="settleMs" type="number" min="100" max="3000" step="50">
+        </div>
+        <div class="field">
+          <label for="maxReadSeconds">Give up reading after (s)</label>
+          <input id="maxReadSeconds" type="number" min="15" max="600" step="5">
+        </div>
+      </div>
+      <small class="muted">Raise the settle time if a slow site renders messages
+        after the scroll has already passed them.</small>
+
+      <h3>Redaction</h3>
+      <p class="muted small">Applied to every format before anything is written
+        to disk. Useful for stripping keys, names or addresses out of a chat you
+        are about to share.</p>
+      <div id="redactions"></div>
+      <button class="btn" id="addRedactionBtn">Add a rule</button>
+
+      <h3>Saved site rules</h3>
+      <div id="userPacks" class="packlist"></div>
+
+      <h3>Privacy</h3>
+      <p class="muted small">Everything runs locally. Nothing is uploaded, and
+        the app makes no network requests of its own — only the pages you load
+        do.</p>
+      <button class="btn danger" id="clearSessionBtn">Sign out of all chat sites</button>
+    </div>
+
+    <!-- -------------------------------------------------------- BATCH -->
+    <div class="panel" data-panel="batch">
+      <h3>Batch export</h3>
+      <p class="muted small">One share link per line. Each is loaded, read and
+        exported with the formats and options you chose on the Export tab.</p>
+      <textarea id="batchUrls" rows="8" spellcheck="false"
+                placeholder="https://chatgpt.com/share/…&#10;https://claude.ai/share/…"></textarea>
+      <button class="btn primary" id="batchBtn">Run batch</button>
+      <button class="btn" id="batchStopBtn" hidden>Stop</button>
+      <div class="batchlog" id="batchLog"></div>
+    </div>
+
+    <!-- -------------------------------------------------------- MERGE -->
+    <div class="panel" data-panel="merge">
+      <h3>Merge chats into one document</h3>
+      <p class="muted small">Combine several conversations into a single
+        document with a table of contents. Sources come from your library —
+        every export is stored there automatically — or from
+        <code>.json</code> files you exported earlier.</p>
+
+      <div class="field">
+        <label for="mergeTitle">Document title</label>
+        <input id="mergeTitle" type="text" spellcheck="false" value="Merged AI conversations">
+      </div>
+
+      <div class="row">
+        <button class="btn" id="mergePickBtn">Add .json files…</button>
+        <button class="btn" id="mergeClearBtn">Clear selection</button>
+      </div>
+
+      <h3>From your library</h3>
+      <div class="mergelist" id="mergeList"></div>
+
+      <h3>Formats</h3>
+      <div class="formats" id="mergeFormats">
+        <label><input type="checkbox" value="pdf" checked><span>PDF</span></label>
+        <label><input type="checkbox" value="md"><span>Markdown</span></label>
+        <label><input type="checkbox" value="docx"><span>Word .docx</span></label>
+        <label><input type="checkbox" value="html"><span>HTML</span></label>
+        <label><input type="checkbox" value="txt"><span>Plain text</span></label>
+      </div>
+
+      <button class="btn primary big" id="mergeRunBtn" disabled>Merge selected</button>
+      <div class="results" id="mergeResults"></div>
+    </div>
+
+    <!-- ------------------------------------------------------ LIBRARY -->
+    <div class="panel" data-panel="library">
+      <h3>Search your exported chats</h3>
+      <p class="muted small">Searches the full text of every conversation you
+        have exported. All words must appear somewhere in the chat.</p>
+      <input id="librarySearch" type="text" spellcheck="false"
+             placeholder="e.g. postgres index, or docker compose">
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="openFolderBtn">Open export folder</button>
+        <button class="btn danger" id="clearLibraryBtn">Clear library</button>
+      </div>
+      <div class="historylist" id="historyList"></div>
+    </div>
+  </aside>
+</main>
+
+<footer class="statusbar">
+  <span id="status">Ready.</span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

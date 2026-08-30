@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Long virtualised chat</title>
+<style>
+  body { margin:0; font-family: system-ui; }
+  #scroller { height: 100vh; overflow-y: auto; position: relative; }
+  #spacer { position: relative; }
+  .turn { position: absolute; left: 0; right: 0; height: 380px; padding: 20px; box-sizing: border-box; border-bottom: 1px solid #eee; }
+</style></head>
+<body>
+<div id="scroller"><div id="spacer"></div></div>
+<script>
+// Mimics a windowed message list: only turns near the viewport exist in the DOM
+// at any moment, exactly like the real ChatGPT/Claude share pages.
+const TOTAL = 24, H = 380;
+const scroller = document.getElementById('scroller');
+const spacer = document.getElementById('spacer');
+spacer.style.height = (TOTAL * H) + 'px';
+
+function render() {
+  const top = scroller.scrollTop, vh = scroller.clientHeight;
+  const first = Math.max(0, Math.floor(top / H) - 1);
+  const last = Math.min(TOTAL - 1, Math.ceil((top + vh) / H) + 1);
+  const want = new Set();
+  for (let i = first; i <= last; i++) want.add(i);
+
+  for (const el of Array.from(spacer.children)) {
+    if (!want.has(Number(el.dataset.i))) el.remove();
+  }
+  for (const i of want) {
+    if (spacer.querySelector('[data-i="' + i + '"]')) continue;
+    const div = document.createElement('div');
+    div.className = 'turn';
+    div.dataset.i = i;
+    div.style.top = (i * H) + 'px';
+    div.setAttribute('data-message-author-role', i % 2 === 0 ? 'user' : 'assistant');
+    div.innerHTML = '<div class="markdown"><p>Message number ' + (i + 1) +
+      ' with unique body text zulu-' + (i + 1) + '-alpha for identification.</p></div>';
+    spacer.appendChild(div);
+  }
+}
+scroller.addEventListener('scroll', render);
+render();
+</script>
+</body></html>

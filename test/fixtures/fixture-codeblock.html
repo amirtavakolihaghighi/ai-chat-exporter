@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Code block toolbars</title>
+<style>body{margin:0;font-family:system-ui}.turn{padding:20px;border-bottom:1px solid #eee}</style>
+</head>
+<body>
+<h1>Code block toolbars</h1>
+
+<!--
+  Reproduces the code-block chrome that GapGPT (and several other
+  ChatGPT-style front-ends) put INSIDE the <pre>: a header div holding a
+  language label and a copy button. Left in place it becomes part of the code,
+  so every snippet came out prefixed with a stray word like "text".
+-->
+
+<div data-message-author-role="user" class="turn">
+  <div class="markdown"><p>Show me the numbers.</p></div>
+</div>
+
+<div data-message-author-role="assistant" class="turn">
+  <div class="markdown">
+    <p>Here they are.</p>
+    <pre style="margin-top: 0; position: relative;"><div class="code-header" style="position: relative;">            <span class="language-label">text</span><button class="copy-code">Copy</button></div><code class="language-so">1: 92
+2: 87
+3: 105
+</code></pre>
+    <p>And some Python:</p>
+    <pre><div class="code-header"><span class="language-label">python</span></div><code>def roll():
+    return 4
+</code></pre>
+    <p>And one with no toolbar at all:</p>
+    <pre><code class="language-js">const x = 1;
+</code></pre>
+  </div>
+</div>
+
+</body></html>

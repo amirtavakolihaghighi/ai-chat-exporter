@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Attachments | ChatGPT</title>
+<style>body{margin:0;font-family:system-ui}.turn{padding:20px;border-bottom:1px solid #eee}</style>
+</head>
+<body>
+<h1>Attachments</h1>
+
+<!--
+  Reproduces a ChatGPT turn with a screenshot attached to the question.
+
+  The point of this fixture: the attachment sits OUTSIDE .whitespace-pre-wrap,
+  which is what the provider pack names as the content selector. Narrowing a
+  turn to its content selector therefore dropped every attached picture, while
+  the site itself still showed the thumbnail — so the chat looked fine on screen
+  and the export was missing images.
+-->
+
+<div data-message-author-role="user" class="turn">
+  <div class="attachment-row">
+    <button aria-label="Open image">
+      <img alt="Screenshot of the settings window"
+           src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==">
+    </button>
+  </div>
+  <div class="whitespace-pre-wrap">What is this dialog asking me to do?</div>
+</div>
+
+<div data-message-author-role="assistant" class="turn">
+  <div class="markdown"><p>It is asking you to confirm before continuing.</p></div>
+</div>
+
+<!-- Text below the picture, to prove document order is preserved. -->
+<div data-message-author-role="user" class="turn">
+  <div class="whitespace-pre-wrap">And this one?</div>
+  <figure class="attachment">
+    <img alt="Second screenshot"
+         src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+    <figcaption>rules.png</figcaption>
+  </figure>
+</div>
+
+<div data-message-author-role="assistant" class="turn">
+  <div class="markdown"><p>That is the second dialog.</p></div>
+</div>
+
+</body></html>

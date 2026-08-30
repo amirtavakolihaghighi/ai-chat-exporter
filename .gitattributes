@@ -1,0 +1,57 @@
+# Normalise line endings.
+#
+# Without this, a file committed from Windows arrives on Linux and macOS with
+# CRLF endings. For a shell script that means `bad interpreter: No such file or
+# directory`, and for a binary it can mean silent corruption as git "helpfully"
+# rewrites bytes it believes are line breaks.
+#
+# `text=auto` lets git decide what is text, and stores it as LF in the
+# repository regardless of the platform it was committed from.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF or cmd.exe misreads them.
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+
+# Source and configuration: always LF.
+*.js       text eol=lf
+*.mjs      text eol=lf
+*.cjs      text eol=lf
+*.json     text eol=lf
+*.md       text eol=lf
+*.html     text eol=lf
+*.css      text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.sh       text eol=lf
+.editorconfig    text eol=lf
+.gitattributes   text eol=lf
+.gitignore       text eol=lf
+
+# Binaries: never touched. The icons in particular would be corrupted by any
+# line-ending conversion.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.pdf   binary
+*.docx  binary
+*.zip   binary
+*.7z    binary
+*.exe   binary
+*.dll   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+
+# Keep generated bundles and lockfiles out of diffs and language statistics;
+# they are checked in for reproducibility, not for review.
+package-lock.json  linguist-generated=true -diff
+
+# Test fixtures are hand-written HTML that reproduces specific site layouts.
+# Marking them as vendored stops GitHub counting them as project source.
+test/fixtures/*.html  linguist-vendored=true

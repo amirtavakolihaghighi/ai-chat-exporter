@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Sorting algorithms | ChatGPT</title>
+<style>
+  body { margin:0; font-family: system-ui; }
+  #scroller { height: 100vh; overflow-y: auto; }
+  .turn { padding: 40px 20px; border-bottom: 1px solid #eee; min-height: 300px; }
+  .clamped { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; max-height:3em; }
+  button.tool { color:#999; }
+</style></head>
+<body>
+<h1>Sorting algorithms</h1>
+<div id="scroller">
+
+  <div data-message-author-role="user"><div class="whitespace-pre-wrap">What is quicksort?</div>
+    <button class="tool" aria-label="Copy">Copy</button></div>
+
+  <div data-message-author-role="assistant" class="turn">
+    <details><summary>Thought for 4 seconds</summary><div class="reasoning-body">I should explain partitioning first.</div></details>
+    <div class="markdown">
+      <p>Quicksort is a <strong>divide and conquer</strong> algorithm.</p>
+      <pre><code class="language-python">def qs(a): return a</code></pre>
+      <p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" alt="chart"></p>
+    </div>
+    <svg width="10" height="10"><circle r="4"/></svg>
+    <button class="tool">Regenerate</button>
+  </div>
+
+  <div data-message-author-role="user" class="turn"><div class="whitespace-pre-wrap">What about its worst case?</div></div>
+
+  <div data-message-author-role="assistant" class="turn">
+    <div class="markdown">
+      <p class="clamped">The worst case is O(n squared), which happens when the pivot is always the smallest or largest element, for example on already-sorted input with a naive first-element pivot choice.</p>
+      <button aria-expanded="false" onclick="this.previousElementSibling.classList.remove('clamped')">Show more</button>
+    </div>
+  </div>
+
+  <div data-message-author-role="user" class="turn"><div class="whitespace-pre-wrap">Thanks!</div></div>
+
+  <div data-message-author-role="assistant" class="turn"><div class="markdown"><p>You are welcome.</p></div></div>
+
+</div>
+</body></html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>گفتگو با هوش مصنوعی | گپ جی پی تی</title>
+<style>
+  body { margin:0; font-family: system-ui; }
+  .q-scrollarea__container { height: 100vh; overflow-y: auto; }
+  .exchange { padding: 18px; border-bottom: 1px solid #eee; }
+  .markdown { background: #fafafa; padding: 8px; }
+</style>
+</head>
+<body>
+
+<!--
+  Reproduces the GapGPT / Quasar structure: every child of .q-infinite-scroll is
+  a whole exchange holding BOTH speakers, and the elements carry no classes at
+  all - only build-generated scoped-style attributes (data-v-*). The only thing
+  distinguishing the answer from the question is that the answer is rendered
+  markdown.
+
+  Read naively this yields either the questions alone, the answers alone, or
+  both fused into one blob with a guessed speaker - which is exactly what a real
+  export of this site produced.
+-->
+
+<div class="q-scrollarea__container">
+  <div class="q-scrollarea__content absolute">
+    <div data-v-989f658a="" class="q-infinite-scroll">
+
+      <div data-v-14e4519f="" data-v-989f658a="" class="exchange">
+        <div data-v-14e4519f=""><p>این‌ها تنظیمات پیشنهادی من برای cache هست</p></div>
+        <div data-v-14e4519f=""><div class="markdown"><p>بله — این روش قابل اجرا است.</p></div></div>
+      </div>
+
+      <div data-v-14e4519f="" data-v-989f658a="" class="exchange">
+        <div data-v-14e4519f=""><p>حالا یک نمونه کد بنویس</p></div>
+        <div data-v-14e4519f=""><div class="markdown">
+          <p>حتماً — نمونه زیر را ببینید:</p>
+          <pre><div class="code-header"><span class="language-label">python</span></div><code>def roll():
+    return 4
+</code></pre>
+        </div></div>
+      </div>
+
+      <div data-v-14e4519f="" data-v-989f658a="" class="exchange">
+        <div data-v-14e4519f=""><p>این را به انگلیسی توضیح بده</p></div>
+        <div data-v-14e4519f="">
+          <!--
+            A custom collapsible reasoning block, as GapGPT renders it: a
+            clickable header, and the reasoning itself still carrying an inline
+            display:none. Captured naively the header becomes content and the
+            reasoning lands in the file but cannot be seen.
+          -->
+          <div data-v-8b58d8a0="" class="expandable-header has-content">
+            <span class="header-title q-ml-sm"> مشاهده مراحل استنتاج </span>
+            <span class="toggle-icon">&#9660;</span>
+          </div>
+          <div data-v-8b58d8a0="" class="expandable-content" style="display: none;">
+            <div class="markdown-container"><p>Planning the explanation</p></div>
+          </div>
+          <div class="markdown"><p>Here is the explanation in English.</p></div>
+        </div>
+      </div>
+
+      <div data-v-14e4519f="" data-v-989f658a="" class="exchange">
+        <div data-v-14e4519f=""><p>یک تصویر از یک گربه بساز</p></div>
+        <div data-v-14e4519f="">
+          <!--
+            An image reply, as an image-generation model returns it. There is no
+            markdown wrapper at all, and the picture is inside a button so it can
+            be clicked to enlarge. Stripping buttons as chrome took the picture
+            with it, and the whole reply went missing.
+          -->
+          <button class="image-result" aria-label="Enlarge">
+            <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" alt="a generated cat">
+          </button>
+          <div class="image-actions"><button>Download</button><button>Regenerate</button></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body></html>

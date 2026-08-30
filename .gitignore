@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+extension/dist/
+build/icon-source.html
+
+# test and benchmark reports
+test/results.txt
+test/e2e-results.txt
+test/benchmark.txt
+test/ui-shot*.png
+extension/test/results.txt
+extension/test/.browser-bundle.js
+
+# Exports land here when the output folder is left inside the project.
+# Never commit them: they are your actual conversations.
+AI Chat Exports/
+
+# editors and operating systems
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+*.log
