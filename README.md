@@ -9,6 +9,10 @@
 Works with ChatGPT, Claude, Gemini, DeepSeek, Grok, Copilot, Perplexity, Poe, Qwen,
 Le Chat, Kimi, GapGPT — and, via a learn-by-clicking fallback, more or less anything else.
 
+[![CI](https://github.com/amirtavakolihaghighi/ai-chat-exporter/actions/workflows/ci.yml/badge.svg)](https://github.com/amirtavakolihaghighi/ai-chat-exporter/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/package-json/v/amirtavakolihaghighi/ai-chat-exporter?color=2563eb&label=version)](CHANGELOG.md)
+[![Licence](https://img.shields.io/github/license/amirtavakolihaghighi/ai-chat-exporter?color=2563eb)](LICENSE)
+
 [Manual](docs/MANUAL.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Architecture](docs/ARCHITECTURE.md) · [Testing](docs/TESTING.md) · [Publishing](docs/PUBLISHING.md) · [Changelog](CHANGELOG.md)
 
 </div>
@@ -37,8 +41,8 @@ can merge the other's JSON exports.
 ## Quick start
 
 ```bash
-git clone <this repo>
-cd AI_Chat_Extractor
+git clone https://github.com/amirtavakolihaghighi/ai-chat-exporter.git
+cd ai-chat-exporter
 npm install
 npm run icon          # once — generates the icons
 ```
