@@ -17,6 +17,9 @@ Le Chat, Kimi, GapGPT — and, via a learn-by-clicking fallback, more or less an
 
 </div>
 
+<img src="docs/screenshot-desktop.png"
+     alt="The desktop app with a conversation loaded: the chat itself on the left, and on the right a preview listing every message with a tick box beside it, above a grid of export formats.">
+
 ---
 
 Everything runs locally. No account, no server, no telemetry. Neither product

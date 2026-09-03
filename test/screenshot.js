@@ -39,6 +39,31 @@ app.whenReady().then(async () => {
   await wait(3000);
   await run(`document.getElementById('extractBtn').click()`);
   await wait(12000);
+  // The viewer toolbar mirrors whatever the webview navigated to, which for a
+  // local fixture is an absolute path carrying this machine's username and
+  // folder tree. A screenshot is precisely where such a thing survives every
+  // text search, so present the demo URL in both places instead.
+  await run(`(() => {
+    const shown = 'https://chatgpt.com/share/8f21c0de-demo';
+    document.getElementById('urlInput').value = shown;
+    const display = document.getElementById('urlDisplay');
+    if (display) display.textContent = shown;
+
+    // The fixture is served from file://, so no provider pack matches it and
+    // the badge reports an unrecognised site. That is an artefact of the test
+    // harness, not of the application: on the real chatgpt.com the pack matches
+    // and the badge is green. Show what a real chat shows, so the screenshot
+    // does not misrepresent the tool in either direction.
+    const badge = document.getElementById('providerBadge');
+    if (badge) { badge.className = 'badge known'; badge.textContent = 'ChatGPT'; }
+    const status = document.getElementById('extractStatus');
+    if (status) {
+      status.className = 'extract-status ok';
+      status.textContent = status.textContent.replace(/ · layout was guessed[^]*$/, '');
+    }
+    return true;
+  })()`);
+
   await run(`document.getElementById('previewBox').open = true`);
   await wait(500);
   if (scrollBottom) {
