@@ -4,7 +4,15 @@ All notable changes to this project are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
+**1.1.5 is the first published release.** The entries below it record the
+development history leading to it and were never distributed, which is why the
+repository has one release and this file lists several versions.
+
 ## [Unreleased]
+
+## [1.1.5] — 2026-09-03
+
+First published release.
 
 ### Added
 
@@ -12,8 +20,8 @@ versions follow [Semantic Versioning](https://semver.org/).
   rewritten by line-ending conversion. Without it, a script committed from
   Windows fails on Linux with `bad interpreter`.
 - `CODE_OF_CONDUCT.md`.
-- The core suite now runs in CI across Linux, macOS and Windows on Node 18, 20
-  and 22 — the range `package.json` claims to support.
+- The core suite runs in CI across Linux, macOS and Windows on Node 18, 20 and
+  22 — the range `package.json` claims to support.
 
 ### Changed
 
@@ -21,8 +29,6 @@ versions follow [Semantic Versioning](https://semver.org/).
   real chat prompted a fixture, the structure that made it useful was kept and
   the words replaced with invented equivalents; the mixed-script case that
   exercises text-direction detection is preserved.
-
-## [1.1.5] — 2026-08-21
 
 ### Fixed
 
@@ -172,3 +178,6 @@ First release: the Windows desktop app.
 - Provider packs, a structural heuristic, and a click-to-teach element picker.
 - Embeds images, so exports survive expiring share links.
 - Redaction, batch export, export history, filename templates.
+
+[Unreleased]: https://github.com/amirtavakolihaghighi/ai-chat-exporter/compare/v1.1.5...HEAD
+[1.1.5]: https://github.com/amirtavakolihaghighi/ai-chat-exporter/releases/tag/v1.1.5
