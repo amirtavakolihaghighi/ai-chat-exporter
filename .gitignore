@@ -24,4 +24,5 @@ AI Chat Exports/
 *.swp
 .DS_Store
 Thumbs.db
+desktop.ini
 *.log
