@@ -8,18 +8,23 @@ labels: provider
 URL pattern, e.g. https://example.ai/share/...
 
 **What the badge said**
-- [ ] Green, named — a built-in rule matched but got it wrong
-- [ ] Amber, "unknown site" — no rule exists
-- [ ] Blue, "your rule"
+- [ ] Green, "built-in rules"
+- [ ] Red, "built-in rules · broken" — the rules found nothing
+- [ ] Blue, "your rules"
+- [ ] Amber, "no rules · will guess"
+
+**What the reading result said**
+Paste the text of the box under "Read this chat".
 
 **What was captured**
 - Nothing at all
 - Some messages (how many of how many?)
 - The wrong things (page furniture, sidebars, duplicates)
 
-**Did "Pick a message by hand" fix it?**
-If yes, please paste the selector it saved — it can become a built-in rule.
-Options -> Saved site rules shows it.
+**Did "Fix the rules" / "Teach this site" fix it?**
+If yes, please attach the rules: Site rules tab -> the site's card -> More ->
+Export. They can become the built-in rules for everyone. A rules file never
+contains your conversations.
 
 **Is the chat public?**
 A share link makes this far easier to fix. Do not paste a private conversation.

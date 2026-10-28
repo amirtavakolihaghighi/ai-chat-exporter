@@ -11,6 +11,16 @@
  *
  * Either way the result must be structured-clone-safe, because it crosses a
  * process boundary in both products.
+ *
+ * Which elements are messages is decided by src/inject/match.js, which the
+ * teach overlay shares — this file is about reading them: scrolling, unfolding,
+ * cleaning and assembling.
+ *
+ * CONFIG.rules is the site's rule set (see src/shared/rules.js), or null when
+ * the site has none and its layout has to be guessed. With rules, a read never
+ * falls back to guessing: rules that find nothing say so, because a guess made
+ * behind their back is how a list of past chats once came out as the
+ * conversation, reported as a success.
  */
 function __aceCreateExtractor(CONFIG) {
   'use strict';
@@ -18,6 +28,14 @@ function __aceCreateExtractor(CONFIG) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const log = [];
   const note = (msg) => log.push(msg);
+
+  // Both files share one scope when the desktop app injects them; under a
+  // bundler the matcher is an ordinary module.
+  const MATCH = (typeof __aceMatcher === 'function' ? __aceMatcher : require('./match.js').createMatcher)(note);
+
+  const RULES = CONFIG.rules || null;
+  const OPTIONS = (RULES && RULES.options) || {};
+  const partOf = (key) => (RULES && RULES.parts && Array.isArray(RULES.parts[key]) ? RULES.parts[key] : []);
 
   /* ---------------------------------------------------------------- utils */
 
@@ -48,6 +66,15 @@ function __aceCreateExtractor(CONFIG) {
     }
   }
 
+  /** Drops any element inside another one in the same list. */
+  function outermost(list) {
+    const set = new Set(list);
+    return list.filter((el) => {
+      for (let p = el.parentElement; p; p = p.parentElement) if (set.has(p)) return false;
+      return true;
+    });
+  }
+
   /* ------------------------------------------------------- scroll handling */
 
   /**
@@ -56,8 +83,8 @@ function __aceCreateExtractor(CONFIG) {
    * message lists to render.
    */
   function findScrollEl() {
-    if (CONFIG.pack.scrollSelector) {
-      const el = document.querySelector(CONFIG.pack.scrollSelector);
+    for (const selector of partOf('scroll')) {
+      const el = qsa(document, selector)[0];
       if (el) return el;
     }
     const docScrolls =
@@ -107,17 +134,34 @@ function __aceCreateExtractor(CONFIG) {
 
   /* ------------------------------------------------------------- expanding */
 
+  /** The smallest element holding every message on the page now, or null. */
+  function conversationArea() {
+    const list = currentMessages().map((m) => m.el);
+    if (!list.length) return null;
+    let area = list[0].parentElement;
+    while (area && !list.every((el) => area.contains(el))) area = area.parentElement;
+    return area;
+  }
+
   /**
    * Unfold collapsed reasoning blocks, "show more" clamps and <details>.
    * Done repeatedly because expanding one block often reveals another.
+   *
+   * Buttons are only pressed inside the conversation — the part of the page
+   * that holds the messages — and never in a menu or sidebar. Pressed anywhere,
+   * the usual unfold buttons also opened the site's own menus, model pickers
+   * and sidebar sections, changing the page while it was being read.
    */
   async function expandAll() {
-    const selectors = [...(CONFIG.pack.expandSelectors || []), ...CONFIG.commonExpand];
+    const selectors = [...partOf('expand'), ...CONFIG.commonExpand];
     let clicked = 0;
     for (let pass = 0; pass < 3; pass++) {
       let clickedThisPass = 0;
+      const area = conversationArea();
+      if (!area) break;
       for (const sel of selectors) {
         for (const el of qsa(document, sel)) {
+          if (!area.contains(el) || MATCH.inNavigation(el)) continue;
           // Never touch anything that would navigate away or submit.
           if (el.closest('a[href]') || matches(el, '[type="submit"]')) continue;
           const label = norm(el.getAttribute('aria-label') || el.textContent).toLowerCase();
@@ -147,123 +191,44 @@ function __aceCreateExtractor(CONFIG) {
 
   /* ------------------------------------------------------- turn discovery */
 
+  // The most each part found at any point in the read, for the health report:
+  // `found` is what its selectors matched, `kept` what became messages.
+  const partFound = {};
+  const partKept = {};
+  const invalidSelectors = new Set();
+
+  /** The messages on the page right now: {el, role, part, cuts}, in page order. */
+  function currentMessages() {
+    if (!RULES) {
+      return MATCH.guessMessages().map((el) => ({ el, role: null, part: 'guess', cuts: [] }));
+    }
+    const { messages, found, invalid } = MATCH.findMessages(RULES);
+    for (const [part, count] of Object.entries(found)) {
+      partFound[part] = Math.max(partFound[part] || 0, count);
+    }
+    const kept = {};
+    for (const message of messages) kept[message.part] = (kept[message.part] || 0) + 1;
+    for (const [part, count] of Object.entries(kept)) {
+      partKept[part] = Math.max(partKept[part] || 0, count);
+    }
+    for (const selector of invalid) invalidSelectors.add(selector);
+    return messages;
+  }
+
   /**
-   * Fallback for sites we have no pack for: score candidate containers and pick
-   * the one whose children look most like a message list.
+   * Waits for the conversation to appear.
+   *
+   * A chat opened a moment ago may still be arriving. Deciding there is nothing
+   * here — or, with rules, that the rules no longer fit — before it has had the
+   * chance to render would be wrong in both cases.
    */
-  let heuristicChoice = null;
-
-  function heuristicTurns() {
-    // Re-deriving this on every call meant re-scoring every container in the
-    // document for each scroll step. Decide once, then reuse the decision.
-    if (heuristicChoice) {
-      if (heuristicChoice.selector) {
-        const found = qsa(document, heuristicChoice.selector).filter((el) => el.textContent.trim().length > 1);
-        if (found.length >= 2) return found;
-      } else if (heuristicChoice.container && document.contains(heuristicChoice.container)) {
-        const kids = Array.from(heuristicChoice.container.children)
-          .filter((k) => k.textContent.trim().length > 20);
-        if (kids.length >= 2) return kids;
-      }
-      heuristicChoice = null; // the page changed shape; decide again
+  async function waitForMessages(limitMs) {
+    const deadline = Date.now() + Math.max(0, limitMs);
+    for (;;) {
+      if (currentMessages().length) return true;
+      if (Date.now() >= deadline) return false;
+      await sleep(250);
     }
-
-    const generic = [
-      '[data-message-author-role]',
-      '[data-testid*="message"]',
-      '[data-message-id]',
-      '[class*="message-row"]',
-      '[class*="ChatMessage"]',
-      '[class*="chat-message"]',
-      '[class*="message-bubble"]',
-      '.message',
-      '[role="listitem"]',
-    ];
-    for (const sel of generic) {
-      const found = qsa(document, sel).filter((el) => el.textContent.trim().length > 1);
-      if (found.length >= 2) {
-        note(`Heuristic matched generic selector: ${sel}`);
-        heuristicChoice = { selector: sel };
-        return found;
-      }
-    }
-
-    // Nothing recognisable — find the container holding most of the page text
-    // whose direct children split that text into several sizeable chunks.
-    let best = null;
-    let bestContainer = null;
-    let bestScore = 0;
-    const bodyLen = document.body.textContent.trim().length || 1;
-    for (const el of document.querySelectorAll('main, div, section, article, ul, ol')) {
-      const kids = Array.from(el.children).filter((k) => k.textContent.trim().length > 20);
-      if (kids.length < 2 || kids.length > 400) continue;
-      const len = el.textContent.trim().length;
-      const share = len / bodyLen;
-      if (share < 0.35) continue;
-      // Favour many similarly sized children and a high share of page text.
-      const sizes = kids.map((k) => k.textContent.trim().length);
-      const mean = sizes.reduce((a, b) => a + b, 0) / sizes.length;
-      const variance =
-        sizes.reduce((a, b) => a + (b - mean) ** 2, 0) / sizes.length / (mean * mean || 1);
-      const score = share * Math.log(1 + kids.length) * (1 / (1 + variance));
-      if (score > bestScore) {
-        bestScore = score;
-        best = kids;
-        bestContainer = el;
-      }
-    }
-    if (best) {
-      note(`Heuristic picked a ${best.length}-child container by text layout.`);
-      heuristicChoice = { container: bestContainer };
-    }
-    return best || [];
-  }
-
-  function findTurns() {
-    const sel = CONFIG.pack.turnSelector;
-    if (sel) {
-      const found = qsa(document, sel).filter((el) => el.textContent.trim().length > 0);
-      // Drop turns nested inside another turn so we don't emit duplicates.
-      const top = found.filter((el) => !found.some((o) => o !== el && o.contains(el)));
-      if (top.length) return top;
-      note('Pack selector matched nothing; falling back to heuristic.');
-    }
-    return heuristicTurns();
-  }
-
-  /* -------------------------------------------------------- role detection */
-
-  function roleOf(el, index) {
-    const pack = CONFIG.pack;
-    if (pack.roleAttr) {
-      const raw = el.getAttribute(pack.roleAttr) || el.querySelector?.(`[${pack.roleAttr}]`)?.getAttribute(pack.roleAttr);
-      if (raw) {
-        const mapped = (pack.roleMap && pack.roleMap[raw]) || raw;
-        if (/user|human/i.test(mapped)) return 'user';
-        if (/assistant|model|bot|ai/i.test(mapped)) return 'assistant';
-        if (/system|tool/i.test(mapped)) return mapped.toLowerCase();
-      }
-    }
-    if (matches(el, pack.userSelector)) return 'user';
-    if (matches(el, pack.assistantSelector)) return 'assistant';
-    if (el.querySelector && pack.userSelector && el.querySelector(pack.userSelector)) return 'user';
-    if (el.querySelector && pack.assistantSelector && el.querySelector(pack.assistantSelector))
-      return 'assistant';
-
-    // Structural tells: user turns are usually right-aligned or bubbled.
-    const cls = `${el.className || ''} ${el.parentElement?.className || ''}`;
-    if (typeof cls === 'string') {
-      if (/\b(justify-end|ml-auto|self-end|user|right-side)\b/i.test(cls)) return 'user';
-      if (/\b(assistant|bot|model|response|agent)\b/i.test(cls)) return 'assistant';
-    }
-    const img = el.querySelector?.('img[alt]');
-    if (img) {
-      const alt = img.getAttribute('alt').toLowerCase();
-      if (/you|user|avatar/.test(alt)) return 'user';
-      if (/chatgpt|claude|gemini|assistant|bot|ai/.test(alt)) return 'assistant';
-    }
-    // Last resort: chats alternate, and turn 0 is nearly always the human.
-    return index % 2 === 0 ? 'user' : 'assistant';
   }
 
   /* ------------------------------------------------------ content cleaning */
@@ -282,6 +247,91 @@ function __aceCreateExtractor(CONFIG) {
     '[class*="copy-code"]',
   ].join(', ');
 
+  /**
+   * Marks elements on the page that must not reach the export: messages of
+   * another speaker nested inside this one (they are read on their own), and
+   * anything inside a "leave out" area. The marks are put on just before a
+   * message is cloned and taken off straight after.
+   */
+  const DROP_ATTR = 'data-ace-drop';
+  const outsideDropped = (node) => !node.closest(`[${DROP_ATTR}]`);
+
+  /**
+   * Line breaks and spaces a person typed.
+   *
+   * A prompt is shown on the site with styling that keeps its line breaks and
+   * runs of spaces (white-space: pre-wrap), and that styling does not travel
+   * with an export — so a prompt typed over several lines came out as one long
+   * line. Elements shown that way are marked before cloning; in the clone their
+   * line breaks become real <br> elements and their runs of spaces
+   * non-breaking ones, which every format keeps.
+   */
+  const LINES_ATTR = 'data-ace-lines';
+
+  function whitespaceKept(el) {
+    const style = getComputedStyle(el);
+    const collapse = style.whiteSpaceCollapse;
+    if (collapse) {
+      if (collapse === 'preserve' || collapse === 'break-spaces') return 'all';
+      return collapse === 'preserve-breaks' ? 'lines' : '';
+    }
+    if (/^(pre|pre-wrap|break-spaces)$/.test(style.whiteSpace)) return 'all';
+    return style.whiteSpace === 'pre-line' ? 'lines' : '';
+  }
+
+  function markTypedLines(root) {
+    const marked = [];
+    const checked = new Set();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (!/\n| {2}/.test(walker.currentNode.nodeValue)) continue;
+      const parent = walker.currentNode.parentElement;
+      if (!parent || checked.has(parent)) continue;
+      checked.add(parent);
+      // Code keeps its layout through its own <pre> handling.
+      if (parent.closest('pre, code, textarea, script, style')) continue;
+      const kept = whitespaceKept(parent);
+      if (!kept) continue;
+      parent.setAttribute(LINES_ATTR, kept);
+      marked.push(parent);
+    }
+    return marked;
+  }
+
+  function applyTypedLines(clone) {
+    const targets = qsa(clone, `[${LINES_ATTR}]`);
+    if (clone.hasAttribute && clone.hasAttribute(LINES_ATTR)) targets.unshift(clone);
+    for (const el of targets) {
+      const spaces = el.getAttribute(LINES_ATTR) === 'all';
+      el.removeAttribute(LINES_ATTR);
+      for (const node of Array.from(el.childNodes)) {
+        if (node.nodeType !== Node.TEXT_NODE || !/\n| {2}/.test(node.nodeValue)) continue;
+        const pieces = document.createDocumentFragment();
+        node.nodeValue.split('\n').forEach((line, i) => {
+          if (i > 0) pieces.appendChild(document.createElement('br'));
+          const text = spaces ? line.replace(/ {2,}/g, (run) => '\u00a0'.repeat(run.length - 1) + ' ') : line;
+          if (text) pieces.appendChild(document.createTextNode(text));
+        });
+        node.replaceWith(pieces);
+      }
+      // A line break at the very end shows nothing on the site; in a file it
+      // would add an empty line.
+      while (el.lastChild && el.lastChild.nodeName === 'BR') el.lastChild.remove();
+    }
+  }
+
+  /** Text with line breaks as spaces, so words either side of one stay apart. */
+  function textOf(node) {
+    let out = '';
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    while (walker.nextNode()) {
+      const current = walker.currentNode;
+      if (current.nodeType === Node.TEXT_NODE) out += current.nodeValue;
+      else if (current.nodeName === 'BR') out += '\n';
+    }
+    return out;
+  }
+
   /** Absolutise a URL so exported files still resolve links after the fact. */
   function absUrl(u) {
     try {
@@ -297,8 +347,12 @@ function __aceCreateExtractor(CONFIG) {
    */
   function cleanClone(el) {
     const clone = el.cloneNode(true);
-    const strip = [...(CONFIG.pack.stripSelectors || []), ...CONFIG.commonStrip];
-    for (const sel of strip) {
+    // Unlike the generic strip list below, these go with any pictures inside
+    // them: they were marked because they are not this message at all.
+    for (const node of qsa(clone, `[${DROP_ATTR}]`)) node.remove();
+    applyTypedLines(clone);
+
+    for (const sel of CONFIG.commonStrip) {
       for (const node of qsa(clone, sel)) {
         // Removing chrome must never remove content along with it. A generated
         // picture is usually wrapped in a button or a link so it can be clicked
@@ -390,32 +444,36 @@ function __aceCreateExtractor(CONFIG) {
     return clone;
   }
 
-  function contentNodeFor(turn) {
-    const sel = CONFIG.pack.contentSelector;
-    if (!sel) return turn;
+  /** Messages whose "message text" part matched, for the health report. */
+  const withBody = new WeakSet();
+  let bodyCount = 0;
 
-    const nodes = qsa(turn, sel);
+  function contentNodeFor(turn) {
+    const selectors = partOf('body');
+    if (!selectors.length) return turn;
+
+    const nodes = outermost(MATCH.queryAll(selectors, turn).elements.filter(outsideDropped));
     if (!nodes.length) return turn;
+    if (!withBody.has(turn)) {
+      withBody.add(turn);
+      bodyCount++;
+    }
 
     // A content selector names the text of a message — ".markdown", ".prose"
     // and so on. Attachments do not live inside it: a screenshot added to a
     // question sits in its own element beside the text. Narrowing to the
     // selector alone therefore drops every picture the user attached.
     const loose = qsa(turn, MEDIA_SELECTOR).filter(
-      (node) => !nodes.some((content) => content === node || content.contains(node))
+      (node) => outsideDropped(node) && !nodes.some((content) => content === node || content.contains(node))
     );
     // Keep only the outermost of any nesting (figure > picture > img).
-    const attachments = loose.filter(
-      (node) => !loose.some((other) => other !== node && other.contains(node))
-    );
+    const attachments = outermost(loose);
 
     if (nodes.length === 1 && !attachments.length) return nodes[0];
 
     // Reassemble in the order they appear on the page, so an image above the
     // text does not end up below it.
-    const ordered = [...nodes, ...attachments].sort((a, b) =>
-      a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
-    );
+    const ordered = MATCH.sortInDocumentOrder([...nodes, ...attachments]);
 
     const wrap = document.createElement('div');
     for (const node of ordered) wrap.appendChild(node.cloneNode(true));
@@ -436,7 +494,18 @@ function __aceCreateExtractor(CONFIG) {
     return true;
   }
 
-  const seen = new Map();
+  /**
+   * Everything read so far, in the order first seen.
+   *
+   * The same message is seen many times — on every scroll step it stays on
+   * screen, and again whenever a virtualised list re-creates it — so each
+   * sighting has to be matched to the message it belongs to. Matching on
+   * content alone once merged two messages that merely said the same thing:
+   * "continue", sent twice, came out once.
+   */
+  const entries = [];
+  const byKey = new Map();
+  const entryOf = new WeakMap();
   // Element -> text length when it was last harvested. Cloning and cleaning a
   // turn is the single most expensive thing here, and on the slow path the same
   // turns stay on screen across many scroll steps; skip the ones that have not
@@ -444,16 +513,36 @@ function __aceCreateExtractor(CONFIG) {
   const harvestedAt = new WeakMap();
   const THINK_ATTR = 'data-ace-thinking';
 
+  /** A cheap fingerprint of what an element shows right now. */
+  const showing = (el) => `${el.textContent.length}:${el.textContent.slice(0, 80)}`;
+
+  /**
+   * True while an earlier sighting's element is still on the page showing the
+   * same thing — proof that a new element with the same content is a second
+   * message, not the first one drawn again.
+   */
+  const stillShowing = (entry) => entry.el.isConnected && showing(entry.el) === entry.sig;
+
+  function rekey(entry, key) {
+    const list = byKey.get(entry.key) || [];
+    byKey.set(entry.key, list.filter((e) => e !== entry));
+    entry.key = key;
+    byKey.set(key, [...(byKey.get(key) || []), entry]);
+  }
+
   /**
    * Reasoning blocks are not reliably inside the content selector — on several
    * providers they sit as a sibling of the message body, so searching only the
    * cleaned content silently loses them. Search the whole turn instead.
    */
   function thinkingNodesIn(turn) {
-    const sel = CONFIG.pack.thinkingSelector;
-    const found = sel ? qsa(turn, sel) : [];
+    const selectors = partOf('thinking');
+    const found = selectors.length
+      ? outermost(MATCH.queryAll(selectors, turn).elements.filter(outsideDropped))
+      : [];
     if (found.length) return found;
     return qsa(turn, 'details').filter((d) => {
+      if (!outsideDropped(d)) return false;
       const summary = norm(d.querySelector('summary')?.textContent).toLowerCase();
       return /thought|thinking|reason|chain of/.test(summary);
     });
@@ -469,14 +558,14 @@ function __aceCreateExtractor(CONFIG) {
    * the user's own words get swallowed into the assistant's reply; matched on
    * the markdown alone, the user's words disappear entirely.
    *
-   * So when a pack names a marker for the assistant half, walk down to the level
-   * where the halves are siblings and group the children around it.
+   * So when a rule set names a marker for the assistant half, walk down to the
+   * level where the halves are siblings and group the children around it.
    *
    * @returns {{role: string, nodes: Element[]}[]|null} null when this element is
    *   an ordinary single-speaker turn.
    */
   function splitExchange(turn) {
-    const marker = CONFIG.pack.exchangeAssistantSelector;
+    const marker = OPTIONS.exchangeAssistant;
     if (!marker) return null;
 
     let host = turn;
@@ -529,12 +618,28 @@ function __aceCreateExtractor(CONFIG) {
     return null;
   }
 
-  /** Cleans one message and files it, deduping against what is already seen. */
+  /**
+   * Where a message with parts cut out of it really starts: its first text
+   * that is not inside a cut. Its own top edge would put an answer above the
+   * question it was wrapped together with.
+   */
+  function firstContentElement(turn) {
+    const walker = document.createTreeWalker(turn, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (!node.nodeValue.trim()) continue;
+      const parent = node.parentElement;
+      if (parent && outsideDropped(parent)) return parent;
+    }
+    return turn;
+  }
+
+  /** Cleans one message and files it under the message it belongs to. */
   function record(node, role, thinkingHtml, positionEl, scroller) {
     const cleaned = cleanClone(node);
     for (const tagged of qsa(cleaned, `[${THINK_ATTR}]`)) tagged.remove();
 
-    const text = norm(cleaned.innerText || cleaned.textContent);
+    const text = norm(textOf(cleaned));
 
     // A reply from an image model is entirely a picture and carries no text at
     // all. Requiring text threw those messages away silently — the prompt was
@@ -549,59 +654,111 @@ function __aceCreateExtractor(CONFIG) {
       .map((node) => (node.getAttribute('src') || node.getAttribute('data-original-src') || '').slice(-100))
       .join('|');
     const key = `${role}:${hash(text.slice(0, 400) + '|' + text.length + '|' + mediaKey)}`;
-    const entry = {
+    const y = absoluteY(positionEl, scroller);
+
+    let entry = entryOf.get(positionEl) || null;
+    if (entry && entry.key !== key) {
+      // The same element now shows more — a reply still arriving, or a section
+      // that unfolded — which is the same message, grown. Anything else means
+      // the element has been reused for a different message.
+      const grew =
+        entry.role === role && text.length >= entry.text.length && text.startsWith(entry.text.slice(0, 200));
+      if (grew) rekey(entry, key);
+      else entry = null;
+    }
+    if (!entry) {
+      entry = (byKey.get(key) || []).find((e) => e.el === positionEl || !stillShowing(e)) || null;
+    }
+
+    if (entry) {
+      // A later pass may catch a more fully rendered version of the same turn,
+      // or reasoning that had not been unfolded yet the first time.
+      if (html.length > entry.html.length) {
+        entry.html = html;
+        entry.text = text;
+      }
+      if (thinkingHtml && thinkingHtml.length > (entry.thinkingHtml || '').length) {
+        entry.thinkingHtml = thinkingHtml;
+      }
+      entry.y = y;
+      entry.el = positionEl;
+      entry.sig = showing(positionEl);
+      entryOf.set(positionEl, entry);
+      return;
+    }
+
+    entry = {
+      key,
       role,
       html,
       text,
       thinkingHtml,
-      y: absoluteY(positionEl, scroller),
-      order: seen.size,
+      y,
+      order: entries.length,
+      el: positionEl,
+      sig: showing(positionEl),
+      inNavigation: MATCH.inNavigation(positionEl),
     };
-    const previous = seen.get(key);
-    // A later pass may catch a more fully rendered version of the same turn.
-    if (!previous || html.length > previous.html.length) {
-      seen.set(key, previous ? { ...entry, order: previous.order } : entry);
-    }
+    entries.push(entry);
+    byKey.set(key, [...(byKey.get(key) || []), entry]);
+    entryOf.set(positionEl, entry);
   }
 
   function harvestOnce(scroller) {
-    const turns = findTurns();
-    turns.forEach((turn, i) => {
+    const messages = currentMessages();
+    // "Leave out" areas, found once per pass rather than once per message.
+    const leaveOut = RULES ? MATCH.queryAll(partOf('exclude')).elements : [];
+
+    messages.forEach((message, i) => {
+      const turn = message.el;
       const currentLength = turn.textContent.length;
       if (harvestedAt.get(turn) === currentLength) return;
       harvestedAt.set(turn, currentLength);
 
-      // Capture reasoning first and tag the originals, so the content clone
-      // taken next can have them removed wherever they happened to live.
-      const thinkingNodes = thinkingNodesIn(turn);
-      let thinkingHtml = '';
-      for (const node of thinkingNodes) {
-        const clone = cleanClone(node);
-        for (const summary of qsa(clone, 'summary')) summary.remove();
-        thinkingHtml += clone.innerHTML;
-        node.setAttribute(THINK_ATTR, '1');
-      }
-
-      const parts = splitExchange(turn);
-      if (parts) {
-        // Reasoning belongs to the answer, not to the question that prompted it.
-        const assistantPart = parts.find((part) => part.role === 'assistant');
-        for (const part of parts) {
-          const wrapper = document.createElement('div');
-          for (const node of part.nodes) wrapper.appendChild(node.cloneNode(true));
-          record(
-            wrapper,
-            part.role,
-            part === assistantPart ? thinkingHtml : '',
-            part.nodes[0],
-            scroller
-          );
+      const dropped = [
+        ...message.cuts,
+        ...leaveOut.filter((area) => area !== turn && turn.contains(area)),
+      ];
+      for (const node of dropped) node.setAttribute(DROP_ATTR, '1');
+      const typed = markTypedLines(turn);
+      try {
+        // Capture reasoning first and tag the originals, so the content clone
+        // taken next can have them removed wherever they happened to live.
+        const thinkingNodes = thinkingNodesIn(turn);
+        let thinkingHtml = '';
+        for (const node of thinkingNodes) {
+          const clone = cleanClone(node);
+          for (const summary of qsa(clone, 'summary')) summary.remove();
+          thinkingHtml += clone.innerHTML;
+          node.setAttribute(THINK_ATTR, '1');
         }
-      } else {
-        record(contentNodeFor(turn), roleOf(turn, i), thinkingHtml, turn, scroller);
-      }
 
-      for (const node of thinkingNodes) node.removeAttribute(THINK_ATTR);
+        const parts = message.role === null ? splitExchange(turn) : null;
+        if (parts) {
+          // Reasoning belongs to the answer, not to the question that prompted it.
+          const assistantPart = parts.find((part) => part.role === 'assistant');
+          for (const part of parts) {
+            const wrapper = document.createElement('div');
+            for (const node of part.nodes) wrapper.appendChild(node.cloneNode(true));
+            record(
+              wrapper,
+              part.role,
+              part === assistantPart ? thinkingHtml : '',
+              part.nodes[0],
+              scroller
+            );
+          }
+        } else {
+          const role = message.role || MATCH.roleOf(turn, i, OPTIONS);
+          const position = message.cuts.length ? firstContentElement(turn) : turn;
+          record(contentNodeFor(turn), role, thinkingHtml, position, scroller);
+        }
+
+        for (const node of thinkingNodes) node.removeAttribute(THINK_ATTR);
+      } finally {
+        for (const node of dropped) node.removeAttribute(DROP_ATTR);
+        for (const node of typed) node.removeAttribute(LINES_ATTR);
+      }
     });
   }
 
@@ -613,9 +770,9 @@ function __aceCreateExtractor(CONFIG) {
    * conversation that single detail dominated the reading time.
    */
   function renderSignature(turns) {
-    const list = turns || findTurns();
-    const first = list[0];
-    const last = list[list.length - 1];
+    const list = turns || currentMessages();
+    const first = list[0] && list[0].el;
+    const last = list.length ? list[list.length - 1].el : null;
     const tag = (el) => (el ? el.textContent.length + ':' + el.textContent.slice(0, 24) : '');
     return `${list.length}|${tag(first)}|${tag(last)}`;
   }
@@ -685,7 +842,7 @@ function __aceCreateExtractor(CONFIG) {
 
     for (let round = 0; round < 6; round++) {
       if (outOfTime()) return;
-      const positions = Array.from(seen.values()).map((r) => r.y).sort((a, b) => a - b);
+      const positions = entries.map((r) => r.y).sort((a, b) => a - b);
       if (!positions.length) return;
 
       // Judge a gap against the typical distance between messages rather than
@@ -708,22 +865,21 @@ function __aceCreateExtractor(CONFIG) {
       if (total - previous > threshold) gaps.push((previous + total) / 2);
       if (!gaps.length) return;
 
-      const before = seen.size;
+      const before = entries.length;
       for (const gap of gaps.slice(0, 12)) {
         if (outOfTime()) return;
-        const signature = renderSignature();
         scrollTo(scroller, Math.max(0, gap - viewportHeight / 2));
         // Targeted repair, so it is worth waiting considerably longer here than
         // during the main sweep.
         await waitForQuiet(scroller, { expectChange: true, maxMs: Math.max(700, changeBudget()) });
         harvestOnce(scroller);
       }
-      if (CONFIG.debug) note(`gap round ${round + 1}: probed ${gaps.length}, seen ${before} -> ${seen.size}`);
+      if (CONFIG.debug) note(`gap round ${round + 1}: probed ${gaps.length}, seen ${before} -> ${entries.length}`);
 
       // A gap that yields nothing may be genuine (one very long message), or a
       // virtualiser that simply had not caught up. Give it a second chance
       // before concluding the conversation is fully captured.
-      if (seen.size === before) {
+      if (entries.length === before) {
         if (++fruitlessRounds >= 2) return;
       } else {
         fruitlessRounds = 0;
@@ -783,10 +939,10 @@ function __aceCreateExtractor(CONFIG) {
     await loadOlderMessages(scroller);
     await expandAll();
 
-    const initial = findTurns();
-    const anchor = initial[0] || null;
+    const initial = currentMessages();
+    const anchor = initial.length ? initial[0].el : null;
     const initialCount = initial.length;
-    const initialLast = initial.length ? initial[initial.length - 1].textContent.slice(0, 60) : '';
+    const initialLast = initial.length ? initial[initial.length - 1].el.textContent.slice(0, 60) : '';
     harvestOnce(scroller);
 
     /* ---- probe: does this page recycle its messages? ---- */
@@ -800,9 +956,9 @@ function __aceCreateExtractor(CONFIG) {
     // pays the whole deadline, once, rather than on every step.
     const rerendered = () => {
       if (anchor && !document.contains(anchor)) return true;
-      const now = findTurns();
+      const now = currentMessages();
       if (now.length !== initialCount) return true;
-      const last = now.length ? now[now.length - 1].textContent.slice(0, 60) : '';
+      const last = now.length ? now[now.length - 1].el.textContent.slice(0, 60) : '';
       return last !== initialLast;
     };
 
@@ -826,28 +982,28 @@ function __aceCreateExtractor(CONFIG) {
       // Some pages still append lazily when you reach the end; keep nudging
       // the bottom until nothing new arrives.
       for (let i = 0; i < 5; i++) {
-        const before = seen.size;
+        const before = entries.length;
         scrollTo(scroller, scrollHeight(scroller));
         await waitForQuiet(scroller);
         harvestOnce(scroller);
-        if (seen.size === before) break;
+        if (entries.length === before) break;
         await expandAll();
       }
 
       // Safety net for a misjudged probe: this looks for vertical gaps between
       // what was captured and re-reads them, so a page that does recycle after
       // all still comes out complete rather than silently short.
-      const beforeRepair = seen.size;
+      const beforeRepair = entries.length;
       await fillGaps(scroller);
 
-      if (seen.size > beforeRepair) {
+      if (entries.length > beforeRepair) {
         // The probe was wrong: finding more content by jumping around proves
         // the page does recycle after all. Fall through to the full pass rather
         // than trusting a conclusion the evidence has just contradicted.
-        note(`Gap check found ${seen.size - beforeRepair} more turn(s); the page does recycle, reading it properly.`);
+        note(`Gap check found ${entries.length - beforeRepair} more turn(s); the page does recycle, reading it properly.`);
       } else {
         scrollTo(scroller, 0);
-        note(`Page keeps every message in the DOM — read ${seen.size} turns without a full scroll pass.`);
+        note(`Page keeps every message in the DOM — read ${entries.length} turns without a full scroll pass.`);
         return scroller;
       }
     }
@@ -872,7 +1028,7 @@ function __aceCreateExtractor(CONFIG) {
       harvestOnce(scroller);
 
       if (CONFIG.debug) {
-        note(`step ${guard}: asked y=${y} got ${scrollTop(scroller)} turns=${findTurns().length} seen=${seen.size}`);
+        note(`step ${guard}: asked y=${y} got ${scrollTop(scroller)} turns=${currentMessages().length} seen=${entries.length}`);
       }
 
       const atBottom = scrollTop(scroller) + viewport(scroller) >= height - 4;
@@ -894,7 +1050,7 @@ function __aceCreateExtractor(CONFIG) {
     harvestOnce(scroller);
     await fillGaps(scroller);
     scrollTo(scroller, 0);
-    note(`Scrolled ${guard} step(s) over ${lastHeight}px; captured ${seen.size} turns.`);
+    note(`Scrolled ${guard} step(s) over ${lastHeight}px; captured ${entries.length} turns.`);
     return scroller;
   }
 
@@ -978,18 +1134,180 @@ function __aceCreateExtractor(CONFIG) {
 
   /* ------------------------------------------------------------------ title */
 
+  // Product names sites put around a conversation's title in the browser tab.
+  const PRODUCT_NAMES = [
+    'ChatGPT', 'Claude', 'Gemini', 'Google Gemini', 'DeepSeek', 'Grok', 'Copilot',
+    'Microsoft Copilot', 'Perplexity', 'Poe', 'Qwen', 'Le Chat', 'Mistral', 'Kimi', 'GapGPT',
+  ];
+  let titleFromRules = false;
+
+  function siteNames() {
+    const host = location.hostname.replace(/^www\./, '');
+    return [...PRODUCT_NAMES, RULES && RULES.name, location.hostname, host].filter(Boolean);
+  }
+
+  const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  /** "Trip ideas - ChatGPT" and "ChatGPT | Trip ideas" both become "Trip ideas". */
+  function withoutSiteName(text) {
+    if (!text) return '';
+    const names = siteNames().map(escapeRegex).join('|');
+    return text
+      .replace(new RegExp(`^(?:${names})\\s*[-|–—:·•]\\s*`, 'i'), '')
+      .replace(new RegExp(`\\s*[-|–—:·•]\\s*(?:${names})$`, 'i'), '')
+      .trim();
+  }
+
+  /** A real title: not empty, not huge, and not just the site's own name. */
+  function sensibleTitle(text) {
+    if (!text || text.length < 2 || text.length > 200) return false;
+    const lower = text.toLowerCase();
+    if (siteNames().some((name) => name.toLowerCase() === lower)) return false;
+    return !/^(new chat|untitled( chat)?|chat|home)$/i.test(text);
+  }
+
+  /** An element's words without its buttons, icons and screen-reader labels. */
+  function wordsOf(el) {
+    const copy = el.cloneNode(true);
+    for (const node of qsa(copy, 'button, svg, [aria-hidden="true"], .sr-only')) node.remove();
+    return norm(copy.textContent);
+  }
+
+  /**
+   * The link to this very chat in the site's list of chats. That list shows the
+   * name the site gave the conversation — the one you see in its sidebar.
+   */
+  function titleFromChatList() {
+    const here = location.pathname.replace(/\/+$/, '');
+    if (!here) return '';
+    for (const link of qsa(document, 'a[href]')) {
+      let target;
+      try {
+        target = new URL(link.getAttribute('href'), location.href);
+      } catch {
+        continue;
+      }
+      // Scheme and host rather than "origin", which is opaque for some pages.
+      if (target.protocol !== location.protocol || target.host !== location.host) continue;
+      if (target.pathname.replace(/\/+$/, '') !== here) continue;
+      const text = withoutSiteName(wordsOf(link));
+      if (sensibleTitle(text)) return text;
+    }
+    return '';
+  }
+
+  /**
+   * The conversation's title, as the site named it.
+   *
+   * In order: what the rules point at; the chat's own entry in the site's list
+   * of chats; the browser tab's title without the site's name; a main heading
+   * outside the menus; and failing all of those, the opening words of the
+   * first message you sent — anything but a meaningless id.
+   */
   function findTitle() {
-    for (const sel of (CONFIG.pack.titleSelector || 'h1, title').split(',')) {
-      const el = document.querySelector(sel.trim());
-      const t = norm(el?.textContent);
-      if (t && t.length > 1 && t.length < 200) {
-        return t.replace(/\s*[|\-–]\s*(ChatGPT|Claude|Gemini|DeepSeek|Grok|Poe|Perplexity).*$/i, '').trim() || t;
+    // Older rules carried a bare "h1" or "title"; those are what the steps
+    // below already do, more carefully, so only a specific selector counts.
+    for (const selector of partOf('title').filter((s) => !/^\s*(h1|title)\s*$/i.test(s))) {
+      for (const el of qsa(document, selector)) {
+        const text = withoutSiteName(wordsOf(el));
+        if (sensibleTitle(text)) {
+          titleFromRules = true;
+          return text;
+        }
       }
     }
-    return norm(document.title) || 'Untitled chat';
+    const listed = titleFromChatList();
+    if (listed) return listed;
+    const tab = withoutSiteName(norm(document.title));
+    if (sensibleTitle(tab)) return tab;
+    for (const heading of qsa(document, 'h1')) {
+      if (MATCH.inNavigation(heading)) continue;
+      const text = withoutSiteName(wordsOf(heading));
+      if (sensibleTitle(text)) return text;
+    }
+    const first = entries
+      .slice()
+      .sort((a, b) => (a.y - b.y) || (a.order - b.order))
+      .find((entry) => entry.role === 'user' && entry.text);
+    if (first) {
+      const words = first.text.split(/\s+/).slice(0, 10).join(' ');
+      return words.length > 80 ? `${words.slice(0, 80).trim()}…` : words;
+    }
+    return 'Untitled chat';
+  }
+
+  /* ----------------------------------------------------------------- health */
+
+  /**
+   * How well the rules — or the guess — did on this page.
+   *
+   * This is what lets a read say "the AI-replies rule found nothing" instead of
+   * quietly exporting half a conversation. Errors mean the result should not be
+   * trusted; warnings mean it is probably usable but worth a look.
+   */
+  function assessHealth(messages) {
+    const counts = { user: 0, assistant: 0, other: 0, total: messages.length };
+    for (const m of messages) {
+      if (m.role === 'user') counts.user++;
+      else if (m.role === 'assistant') counts.assistant++;
+      else counts.other++;
+    }
+
+    const problems = [];
+    if (RULES) {
+      for (const part of ['user', 'assistant', 'message']) {
+        if (partOf(part).length && !partFound[part]) {
+          problems.push({ code: 'part-empty', part, severity: messages.length ? 'warn' : 'error' });
+        }
+      }
+      if (invalidSelectors.size) problems.push({ code: 'invalid-selector', severity: 'warn' });
+    }
+    if (!messages.length) {
+      problems.push({ code: 'no-messages', severity: 'error' });
+    } else if (counts.total >= 2 && (!counts.user || !counts.assistant)) {
+      problems.push({ code: 'one-speaker', part: counts.user ? 'assistant' : 'user', severity: 'warn' });
+    }
+    const navigation = entries.filter((e) => e.inNavigation).length;
+    if (messages.length && navigation) {
+      problems.push({
+        code: 'in-navigation',
+        severity: navigation / messages.length >= 0.5 ? 'error' : 'warn',
+      });
+    }
+
+    const status = problems.some((p) => p.severity === 'error')
+      ? 'broken'
+      : problems.length
+        ? 'warn'
+        : 'ok';
+    return {
+      status,
+      counts,
+      parts: {
+        user: partKept.user || 0,
+        assistant: partKept.assistant || 0,
+        message: partKept.message || 0,
+        thinking: messages.filter((m) => m.thinkingHtml).length,
+        body: bodyCount,
+        title: titleFromRules ? 1 : 0,
+      },
+      found: { ...partFound },
+      problems,
+    };
   }
 
   /* ------------------------------------------------------------------- main */
+
+  function describe() {
+    return {
+      url: location.href,
+      host: location.hostname,
+      source: RULES ? 'rules' : 'guess',
+      rules: RULES ? { id: RULES.id, name: RULES.name, origin: RULES.origin } : null,
+      providerId: RULES ? RULES.providerId || RULES.id : 'unknown',
+      providerName: RULES ? RULES.name : location.hostname,
+    };
+  }
 
   async function run() {
     const started = Date.now();
@@ -1000,9 +1318,25 @@ function __aceCreateExtractor(CONFIG) {
       /* ignore */
     }
 
+    const waitMs = CONFIG.waitForMessagesMs ?? (RULES ? 8000 : 3000);
+    const appeared = await waitForMessages(waitMs);
+    if (RULES && !appeared) {
+      note(`The rules for ${RULES.name} found no messages on this page.`);
+      return {
+        ok: false,
+        reason: 'rules-found-nothing',
+        message: `The rules for ${RULES.name} found no messages on this page.`,
+        ...describe(),
+        health: assessHealth([]),
+        messages: [],
+        log,
+      };
+    }
+
     await scrollAndHarvest();
 
-    const messages = Array.from(seen.values())
+    const messages = entries
+      .slice()
       .sort((a, b) => (a.y - b.y) || (a.order - b.order))
       .map((m, i) => ({
         index: i,
@@ -1013,15 +1347,23 @@ function __aceCreateExtractor(CONFIG) {
       }));
 
     const images = await inlineImages(messages);
+    // Before the health report, which records whether the title rule found it.
+    const title = findTitle();
+    const health = assessHealth(messages);
 
     return {
       ok: messages.length > 0,
-      url: location.href,
-      host: location.hostname,
-      providerId: CONFIG.pack.id || 'unknown',
-      providerName: CONFIG.pack.name || location.hostname,
-      usedPack: Boolean(CONFIG.pack.turnSelector),
-      title: findTitle(),
+      ...(messages.length
+        ? {}
+        : {
+          reason: RULES ? 'rules-found-nothing' : 'nothing-found',
+          message: RULES
+            ? `The rules for ${RULES.name} found no messages on this page.`
+            : 'No messages were found on this page.',
+        }),
+      ...describe(),
+      health,
+      title,
       capturedAt: new Date().toISOString(),
       messages,
       stats: {
@@ -1030,6 +1372,7 @@ function __aceCreateExtractor(CONFIG) {
         images: images.count,
         imagesFailed: images.failed,
         elapsedMs: Date.now() - started,
+        stoppedEarly: hitDeadline,
       },
       log,
     };

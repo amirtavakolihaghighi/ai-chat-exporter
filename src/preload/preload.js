@@ -11,27 +11,49 @@ const api = {
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     save: (patch) => ipcRenderer.invoke('settings:save', patch),
+    reset: () => ipcRenderer.invoke('settings:reset'),
+  },
+  data: {
+    info: () => ipcRenderer.invoke('data:info'),
+    open: (which) => ipcRenderer.invoke('data:open', which),
+    change: () => ipcRenderer.invoke('data:change'),
+    useDefault: () => ipcRenderer.invoke('data:useDefault'),
   },
   providers: {
     list: () => ipcRenderer.invoke('providers:list'),
-    resolve: (url) => ipcRenderer.invoke('packs:resolve', url),
   },
-  packs: {
-    get: () => ipcRenderer.invoke('packs:get'),
-    save: (host, pack) => ipcRenderer.invoke('packs:save', { host, pack }),
+  rules: {
+    resolve: (url) => ipcRenderer.invoke('rules:resolve', url),
+    groups: (url) => ipcRenderer.invoke('rules:groups', url),
+    suggestName: (url, baseId) => ipcRenderer.invoke('rules:suggestName', { url, baseId }),
+    saveTaught: (payload) => ipcRenderer.invoke('rules:saveTaught', payload),
+    saveSet: (set) => ipcRenderer.invoke('rules:saveSet', set),
+    remove: (id) => ipcRenderer.invoke('rules:delete', id),
+    setDefault: (id) => ipcRenderer.invoke('rules:setDefault', id),
+    duplicate: (id) => ipcRenderer.invoke('rules:duplicate', id),
+    removeBuiltin: (id) => ipcRenderer.invoke('rules:removeBuiltin', id),
+    restoreBuiltin: (id) => ipcRenderer.invoke('rules:restoreBuiltin', id),
+    recordHealth: (id, health) => ipcRenderer.invoke('rules:recordHealth', { id, health }),
+    exportFile: (ids) => ipcRenderer.invoke('rules:export', ids),
+    importFile: () => ipcRenderer.invoke('rules:import'),
   },
   library: {
     get: (limit) => ipcRenderer.invoke('library:get', limit),
     search: (query) => ipcRenderer.invoke('library:search', query),
     clear: () => ipcRenderer.invoke('library:clear'),
+    lastFor: (url) => ipcRenderer.invoke('library:lastFor', url),
   },
   merge: {
     pickFiles: () => ipcRenderer.invoke('merge:pickFiles'),
     run: (payload) => ipcRenderer.invoke('merge:run', payload),
   },
   inject: {
-    extractor: (url) => ipcRenderer.invoke('inject:extractor', url),
-    picker: () => ipcRenderer.invoke('inject:picker'),
+    extractor: (url, options) => ipcRenderer.invoke('inject:extractor', url, options),
+    teach: (options) => ipcRenderer.invoke('inject:teach', options),
+    teachClose: () => ipcRenderer.invoke('inject:teachClose'),
+  },
+  help: {
+    manual: () => ipcRenderer.invoke('help:manual'),
   },
   exports: {
     run: (payload) => ipcRenderer.invoke('export:run', payload),
@@ -52,7 +74,7 @@ const api = {
     clear: () => ipcRenderer.invoke('session:clear'),
   },
   on: (channel, handler) => {
-    const allowed = ['guest:navigated', 'session:cleared'];
+    const allowed = ['guest:navigated', 'session:cleared', 'help:open', 'help:whatsThis'];
     if (!allowed.includes(channel)) return () => {};
     const listener = (_event, ...args) => handler(...args);
     ipcRenderer.on(channel, listener);

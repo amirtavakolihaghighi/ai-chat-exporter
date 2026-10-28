@@ -53,6 +53,31 @@ function inFolder(name) {
   return `${FOLDER}/${name}`;
 }
 
+/**
+ * Saves files into the exports folder, recording what really happened.
+ *
+ * downloadBlob may fall back to a safer name if the browser rejects the first
+ * one, and something else may rename the file afterwards, so record what was
+ * actually written rather than what we asked for — otherwise the results list
+ * names a file that is not on disk.
+ */
+function saver(files, notes) {
+  return async (blob, name) => {
+    const saved = await downloadBlob(blob, inFolder(name));
+    files.push(saved.renamedTo || saved.filename);
+    if (saved.fellBack) {
+      notes.push(`"${name}" was not an acceptable filename here; saved as "${saved.filename}".`);
+    }
+    if (saved.renamedTo) {
+      notes.push(
+        `Saved as "${saved.renamedTo}", not "${name}": something else renamed it. ` +
+        'A download manager (such as IDM) does this when it takes over downloads — ' +
+        'let the browser handle downloads from this extension to keep the names.'
+      );
+    }
+  };
+}
+
 /* ------------------------------------------------------------ text builders */
 
 function yamlFrontmatter(conversation, opts) {
@@ -180,16 +205,7 @@ async function exportConversation(conversation, formats, options = {}) {
     pageBreakPerTurn: Boolean(options.pageBreakPerTurn),
   };
 
-  // downloadBlob may fall back to a safer name if the browser rejects the
-  // first one, so record what was actually written rather than what we asked
-  // for — otherwise the results list names a file that is not on disk.
-  const save = async (blob, name) => {
-    const saved = await downloadBlob(blob, inFolder(name));
-    files.push(saved.filename);
-    if (saved.fellBack) {
-      notes.push(`"${name}" was not an acceptable filename here; saved as "${saved.filename}".`);
-    }
-  };
+  const save = saver(files, notes);
 
   for (const format of formats) {
     try {
@@ -313,16 +329,8 @@ async function exportMerged(sources, formats, options = {}) {
 
   const files = [];
   const errors = [];
-  // downloadBlob may fall back to a safer name if the browser rejects the
-  // first one, so record what was actually written rather than what we asked
-  // for — otherwise the results list names a file that is not on disk.
-  const save = async (blob, name) => {
-    const saved = await downloadBlob(blob, inFolder(name));
-    files.push(saved.filename);
-    if (saved.fellBack) {
-      notes.push(`"${name}" was not an acceptable filename here; saved as "${saved.filename}".`);
-    }
-  };
+  const notes = [];
+  const save = saver(files, notes);
 
   for (const format of formats) {
     try {
@@ -347,7 +355,7 @@ async function exportMerged(sources, formats, options = {}) {
     }
   }
 
-  return { files, errors };
+  return { files, errors, notes };
 }
 
 module.exports = {

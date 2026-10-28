@@ -3,7 +3,8 @@
 const {
   api, ensureHostAccess, ensureContentScript, isScriptableUrl, activeTab, sendToTab,
 } = require('../lib/browser');
-const { getUserPacks } = require('../lib/storage');
+const { getSiteRules } = require('../lib/storage');
+const rules = require('../../../src/shared/rules');
 
 /**
  * The popup stays deliberately thin.
@@ -48,19 +49,23 @@ async function init() {
 
   try {
     await ensureContentScript(tab.id);
-    const info = await sendToTab(tab.id, { type: 'ace:describe', userPacks: await getUserPacks() });
+    const info = await sendToTab(tab.id, { type: 'ace:describe' });
+    const site = rules.siteSummary(tab.url, await getSiteRules());
+    const broken = site.set && site.set.health && site.set.health.status === 'broken';
 
-    const known = info.packSource !== 'heuristic';
+    let words;
+    if (site.set) {
+      words = broken
+        ? 'Its rules stopped working last time — open the workspace to fix them.'
+        : site.source === 'user' ? 'Read with your own rules.' : 'Read with the built-in rules.';
+    } else if (site.off) {
+      words = 'Its rules are turned off, so the layout will be guessed.';
+    } else {
+      words = 'No rules for this site yet — the layout will be guessed. Teach it from the workspace.';
+    }
     setSite(
-      [
-        line(info.providerName || info.host, true),
-        line(
-          known
-            ? (info.packSource === 'user' ? 'Using your saved rule for this site.' : 'Recognised site.')
-            : 'Not a site I know — the layout will be guessed. Check the preview.'
-        ),
-      ],
-      known ? 'known' : 'guess'
+      [line(site.name || info.host, true), line(words)],
+      site.set && !broken ? 'known' : 'guess'
     );
 
     $('openBtn').disabled = false;
@@ -75,6 +80,8 @@ async function init() {
 $('openBtn').addEventListener('click', () => openWorkspace('?capture=1'));
 $('quickBtn').addEventListener('click', () => openWorkspace('?capture=1&auto=1'));
 $('libraryBtn').addEventListener('click', () => openWorkspace('?tab=library'));
+$('rulesBtn').addEventListener('click', () => openWorkspace('?tab=rules'));
 $('workspaceBtn').addEventListener('click', () => openWorkspace('?'));
+$('manualBtn').addEventListener('click', () => openWorkspace('?help=1'));
 
 init();

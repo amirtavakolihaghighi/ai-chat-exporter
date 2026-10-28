@@ -75,7 +75,7 @@ check('provider: gapgpt has its own pack, not the generic one',
   matchProvider('https://gapgpt.app/c/1', PROVIDERS)?.id === 'gapgpt',
   matchProvider('https://gapgpt.app/c/1', PROVIDERS)?.id);
 check('provider: gapgpt pack knows the exchange holds both speakers',
-  Boolean(matchProvider('https://gapgpt.app/c/1', PROVIDERS)?.exchangeAssistantSelector));
+  Boolean(matchProvider('https://gapgpt.app/c/1', PROVIDERS)?.options?.exchangeAssistant));
 check('provider: unknown clone front-ends still use the generic pack',
   matchProvider('https://librechat.example.com/c/1', PROVIDERS)?.id === 'openui-clone');
 check('provider: longest host match wins',

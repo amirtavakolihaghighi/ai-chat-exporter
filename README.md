@@ -7,7 +7,7 @@
 **Export any AI conversation to PDF, Word, Markdown, HTML, JSON, images — or a folder of runnable source files.**
 
 Works with ChatGPT, Claude, Gemini, DeepSeek, Grok, Copilot, Perplexity, Poe, Qwen,
-Le Chat, Kimi, GapGPT — and, via a learn-by-clicking fallback, more or less anything else.
+Le Chat, Kimi, GapGPT — and anything else you point it at, in a few clicks.
 
 [![CI](https://github.com/amirtavakolihaghighi/ai-chat-exporter/actions/workflows/ci.yml/badge.svg)](https://github.com/amirtavakolihaghighi/ai-chat-exporter/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/package-json/v/amirtavakolihaghighi/ai-chat-exporter?color=2563eb&label=version)](CHANGELOG.md)
@@ -18,7 +18,7 @@ Le Chat, Kimi, GapGPT — and, via a learn-by-clicking fallback, more or less an
 </div>
 
 <img src="docs/screenshot-desktop.png"
-     alt="The desktop app with a conversation loaded: the chat itself on the left, and on the right a preview listing every message with a tick box beside it, above a grid of export formats.">
+     alt="The desktop app reading a ChatGPT conversation. On the chat, blue boxes labelled You 1 and You 2 mark the user's messages and a green box labelled AI 1 marks the reply; a floating panel lists what the site's rules found — 3 of your messages, 3 AI replies — and previews what a read would give. On the right, the result says 6 messages were read with the built-in rules for ChatGPT, above the export formats.">
 
 ---
 
@@ -83,46 +83,62 @@ npm run dist          # build installer + portable .exe into dist/
 - **Merges several chats** into one document with a table of contents.
 - **Redacts** before writing, with literal or regex rules.
 - **Right-to-left** Persian, Arabic and Hebrew in HTML, PDF and Word.
-- **Learns sites it does not know**: click one message and it works out a selector
-  for the rest, saved for next time.
+- **Reads every site with rules you can see and fix.** Which parts of a page are
+  your messages, the AI's replies, its reasoning, or furniture to leave out is
+  shown on the page as coloured boxes. When a site redesigns, the app says so
+  instead of reading the wrong thing, and proposes rules for the new layout —
+  fixing it is checking the colours and pressing Save.
+- **Manages those rules**: keep several rule sets for a site and choose which
+  one reads it, see what each found last time, go back to the built-in ones,
+  remove or restore them, and import or export rules as files.
+- **Keeps its files in one place**: settings, site rules, the library and
+  exports, each in its own folder inside `data/` in the project (or wherever you
+  choose). In Chrome and Edge the extension can keep its options, rules and
+  exports there too, sharing one set of site rules with the desktop app.
+  Default options are in `config/default-settings.json`.
+- **Explains itself**: the full manual is inside the app (F1), and "What's
+  this?" mode explains any button you click.
 
 See the [manual](docs/MANUAL.md) for how each of these works.
 
 ## Provider support
 
-Selectors are a best-effort starting point, not a contract — these sites change
-their markup regularly. Verified means a real conversation has been exported and
-checked end to end.
+Built-in rules are a best-effort starting point, not a contract — these sites
+change their pages regularly. Verified means a real conversation has been
+exported and checked end to end.
 
 | Provider | Status |
 | --- | --- |
-| GapGPT | Verified — dedicated pack, including its one-element-per-exchange layout |
-| ChatGPT, Claude, Gemini, DeepSeek, Grok, Copilot, Perplexity, Poe, Qwen, Le Chat, Kimi | Packs written, not all individually verified |
-| LibreChat, Open WebUI and other re-skins | Generic pack |
-| Anything else | Structural heuristic, plus the picker |
+| GapGPT | Verified — dedicated rules, including its one-element-per-exchange layout |
+| ChatGPT, Claude, Gemini, DeepSeek, Grok, Copilot, Perplexity, Poe, Qwen, Le Chat, Kimi | Rules written, not all individually verified |
+| LibreChat, Open WebUI and other re-skins | Generic rules |
+| Anything else | Taught in a few clicks, starting from the app's own guess |
 
-If a site reads wrongly, [`docs/site-report.js`](docs/site-report.js) describes
-its structure so a pack can be written for it — see
-[Troubleshooting](docs/TROUBLESHOOTING.md).
+If a site cannot be taught reliably, export its rules and run
+[`docs/site-report.js`](docs/site-report.js) on the chat, so built-in rules can
+be written for it — see [Troubleshooting](docs/TROUBLESHOOTING.md).
 
-## When a site is not recognised
+## When a site changes its design
 
-Provider markup changes constantly, so nothing is trusted on its own. The reader
-degrades in stages:
+Chat sites redesign constantly, so rules are checked on every read, and a rule
+that stops working stops loudly rather than guessing behind your back:
 
-1. **A provider pack** — known selectors for a known site.
-2. **A structural heuristic** — pick the container whose children look like a
-   message list. This handles unknown sites and re-skinned front-ends.
-3. **Pick a message by hand** — click one message; a selector for all of them is
-   derived and saved for that site, overriding the built-ins. This is how you
-   repair a provider redesign yourself in ten seconds instead of waiting for an
-   update. Your rules are listed under **Options → Saved site rules**.
+1. **Site rules** — built-in, taught or imported — say which parts of the page
+   are which. Each read reports what every part found.
+2. **Rules that find nothing** stop the read and say so, with one button to fix
+   them: the app proposes rules for the new layout, drawn on the page in colour,
+   and saving them reads the chat again. The built-in rules are never edited;
+   your fixed copy takes their place.
+3. **A site with no rules** is guessed — skipping sidebars, menus and lists of
+   links — and the result is marked as a guess, with a button to teach the site.
 4. **Capture as shown** — a screenshot needs no parsing at all.
+
+Everything about rules is managed in the **Site rules** tab of either app.
 
 ## Development
 
 ```bash
-npm test               # conversion core — plain Node, fast
+npm test               # conversion core, site rules, help coverage — plain Node, fast
 npm run test:electron  # the real extractor against DOM fixtures, plus capture
 npm run test:e2e       # boots the real app and drives the real UI to files
 npm run test:extension # manifests, built bundles, browser-side exports
@@ -141,13 +157,15 @@ a hand-testing checklist for exactly that.
 
 ```text
 src/                  desktop app + the shared core
-  shared/             provider packs, text direction, byte helpers
-  inject/             scripts that run inside the chat page
+  shared/             site rules, shared interface pieces, help, text direction
+  inject/             scripts that run inside the chat page: reading and teaching
   main/               Electron main process, converters, exporters
   renderer/           desktop UI
 extension/            browser extension (imports the same core)
+config/               default-settings.json: the options both apps start with
+data/                 your settings, rules, library and exports when run from here (not committed)
 scripts/              build helpers
-docs/                 manual, testing, architecture, troubleshooting
+docs/                 manual (also shown inside both apps), testing, architecture, troubleshooting
 test/                 suites, fixtures, benchmark
 ```
 
@@ -156,8 +174,9 @@ test/                 suites, fixtures, benchmark
 - **The chat tab must stay in front while reading.** Browsers throttle background
   tabs so hard that chat sites stop redrawing, so the extension brings the tab
   forward and returns you afterwards.
-- **Extensions cannot choose an output folder.** Browser policy; everything goes to
-  `Downloads/AI Chat Exports/`.
+- **Extensions cannot choose an output folder on their own.** In Chrome and Edge
+  you can give the extension a folder in its Options; otherwise — and always in
+  Firefox — everything goes to `Downloads/AI Chat Exports/`.
 - **PDF from the extension goes through the print dialog.** Quality is identical —
   same print engine — but it is not automatic and there is no page-number footer.
 - **"As shown" capture of a long chat may be partial**, since it can only include

@@ -1,0 +1,40 @@
+{
+  "_about": "The options both apps start with. Your own changes are not kept here: the desktop app writes them to settings/settings.json in its data folder, and the extension to settings/extension-settings.json in the folder you link it to - and only the options you changed. Change a value here to change the default for this copy of the project; an option missing here, or of the wrong kind, falls back to the app's built-in default.",
+  "shared": {
+    "filenameTemplate": "{date} - {provider} - {title}",
+    "theme": "light",
+    "fontSize": 15,
+    "includeMeta": true,
+    "includeThinking": true,
+    "includeSystem": true,
+    "frontmatter": true,
+    "embedImages": true,
+    "assetMode": "inline",
+    "pageBreakPerTurn": false,
+    "expandLinks": false,
+    "jpegQuality": 92,
+    "settleMs": 450,
+    "maxScrollSteps": 400,
+    "maxReadSeconds": 90,
+    "redactions": [],
+    "batchGuessUnknown": false
+  },
+  "desktop": {
+    "outDir": "",
+    "captureMode": "clean",
+    "pageSize": "A4",
+    "marginInches": 0.5,
+    "landscape": false,
+    "scale": 1,
+    "pageNumbers": true,
+    "printBackground": true,
+    "openAfterExport": true,
+    "lastFormats": ["pdf"]
+  },
+  "extension": {
+    "lastFormats": ["md"],
+    "minCodeLines": 1,
+    "assistantOnlyCode": false,
+    "screenshotDelayMs": 550
+  }
+}

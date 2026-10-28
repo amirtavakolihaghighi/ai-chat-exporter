@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Weekend trip ideas - ChatGPT</title>
+<style>
+  body { margin:0; font-family:system-ui; }
+  .root { display:flex; height:100vh; }
+  .sidebar { width:260px; flex:none; overflow-y:auto; background:#f7f7f8; }
+  .sidebar a { display:block; padding:6px 10px; color:#222; text-decoration:none; }
+  .main-col { flex:1; display:flex; flex-direction:column; min-width:0; }
+  main { flex:1; display:flex; flex-direction:column; min-height:0; }
+  #thread { flex:1; overflow-y:auto; }
+  article { padding:20px 32px; }
+  .user-bubble { margin-left:auto; max-width:70%; width:fit-content; background:#eee; border-radius:18px; padding:10px 16px; }
+  .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+  .sources { color:#888; font-size:12px; }
+  form { padding:12px; }
+  .notice { color:#999; font-size:11px; text-align:center; }
+</style></head>
+<body>
+
+<!--
+  Reproduces the failure that prompted site rules.
+
+  A chat site redesigns: the attribute the built-in rules look for
+  (data-message-author-role) is gone, and the speaker now lives on data-turn.
+  The page also has what every real chat app has and the old layout guesser did
+  not know about — a sidebar listing past chats. Against a short conversation
+  that sidebar holds more text than the chat itself, so the guesser exported the
+  list of chats as the conversation and reported success.
+
+  The per-turn data-testid carries the turn number, so a picker that copies
+  attribute values verbatim cannot generalise from it either.
+-->
+
+<div class="root">
+  <div class="sidebar">
+    <nav aria-label="Chat history"><div id="history"><aside><h2>Chats</h2>
+      <a class="__menu-item" href="/c/68f01"><div class="truncate"><span>Weekend trip ideas near the mountains</span></div></a>
+      <a class="__menu-item" href="/c/68f02"><div class="truncate"><span>Fix TypeError in React useEffect hook</span></div></a>
+      <a class="__menu-item" href="/c/68f03"><div class="truncate"><span>Persian translation of a cover letter</span></div></a>
+      <a class="__menu-item" href="/c/68f04"><div class="truncate"><span>Explain the CAP theorem with examples</span></div></a>
+      <a class="__menu-item" href="/c/68f05"><div class="truncate"><span>Best way to learn Rust as a JS developer</span></div></a>
+      <a class="__menu-item" href="/c/68f06"><div class="truncate"><span>Budget spreadsheet formulas for rent</span></div></a>
+      <a class="__menu-item" href="/c/68f07"><div class="truncate"><span>SQL query to find duplicate email rows</span></div></a>
+      <a class="__menu-item" href="/c/68f08"><div class="truncate"><span>Summarise the article on battery tech</span></div></a>
+      <a class="__menu-item" href="/c/68f09"><div class="truncate"><span>Polite follow-up email to the recruiter</span></div></a>
+      <a class="__menu-item" href="/c/68f10"><div class="truncate"><span>Compare PostgreSQL and MySQL indexes</span></div></a>
+      <a class="__menu-item" href="/c/68f11"><div class="truncate"><span>Meal plan for a high protein week</span></div></a>
+      <a class="__menu-item" href="/c/68f12"><div class="truncate"><span>Regex to validate international phone numbers</span></div></a>
+      <a class="__menu-item" href="/c/68f13"><div class="truncate"><span>Docker compose for Node and Redis</span></div></a>
+      <a class="__menu-item" href="/c/68f14"><div class="truncate"><span>How transformers handle long context</span></div></a>
+      <a class="__menu-item" href="/c/68f15"><div class="truncate"><span>Gift ideas for a ten year old nephew</span></div></a>
+      <a class="__menu-item" href="/c/68f16"><div class="truncate"><span>Debug Electron webview CSP errors</span></div></a>
+      <a class="__menu-item" href="/c/68f17"><div class="truncate"><span>Rewrite this paragraph more formally</span></div></a>
+      <a class="__menu-item" href="/c/68f18"><div class="truncate"><span>Python script to rename photos by date</span></div></a>
+      <a class="__menu-item" href="/c/68f19"><div class="truncate"><span>Explain the Fourier transform intuitively</span></div></a>
+      <a class="__menu-item" href="/c/68f20"><div class="truncate"><span>Plan a 5k running schedule for beginners</span></div></a>
+      <a class="__menu-item" href="/c/68f21"><div class="truncate"><span>Kubernetes liveness vs readiness probes</span></div></a>
+      <a class="__menu-item" href="/c/68f22"><div class="truncate"><span>Tax deductions for freelance designers</span></div></a>
+      <a class="__menu-item" href="/c/68f23"><div class="truncate"><span>Write unit tests for a date parser</span></div></a>
+      <a class="__menu-item" href="/c/68f24"><div class="truncate"><span>Explain Big-O of common sort algorithms</span></div></a>
+      <a class="__menu-item" href="/c/68f25"><div class="truncate"><span>Prepare questions for a job interview</span></div></a>
+      <a class="__menu-item" href="/c/68f26"><div class="truncate"><span>Convert callbacks to async and await</span></div></a>
+      <a class="__menu-item" href="/c/68f27"><div class="truncate"><span>History of the Silk Road trade routes</span></div></a>
+      <a class="__menu-item" href="/c/68f28"><div class="truncate"><span>Choose a laptop for machine learning</span></div></a>
+      <a class="__menu-item" href="/c/68f29"><div class="truncate"><span>Improve sleep quality naturally tips</span></div></a>
+      <a class="__menu-item" href="/c/68f30"><div class="truncate"><span>Git rebase vs merge for feature branches</span></div></a>
+      <a class="__menu-item" href="/c/68f31"><div class="truncate"><span>Design a logo brief for a coffee shop</span></div></a>
+      <a class="__menu-item" href="/c/68f32"><div class="truncate"><span>Explain OAuth2 authorization code flow</span></div></a>
+      <a class="__menu-item" href="/c/68f33"><div class="truncate"><span>Translate a recipe from Italian</span></div></a>
+      <a class="__menu-item" href="/c/68f34"><div class="truncate"><span>CSS grid layout for a photo gallery</span></div></a>
+      <a class="__menu-item" href="/c/68f35"><div class="truncate"><span>Negotiate a salary offer by email</span></div></a>
+      <a class="__menu-item" href="/c/68f36"><div class="truncate"><span>Explain how vaccines train immunity</span></div></a>
+      <a class="__menu-item" href="/c/68f37"><div class="truncate"><span>Bash one-liner to find large files</span></div></a>
+      <a class="__menu-item" href="/c/68f38"><div class="truncate"><span>Outline for a talk on accessibility</span></div></a>
+      <a class="__menu-item" href="/c/68f39"><div class="truncate"><span>Compare index funds and ETFs simply</span></div></a>
+      <a class="__menu-item" href="/c/68f40"><div class="truncate"><span>Fix flaky Playwright test timeouts</span></div></a>
+    </aside></div></nav>
+  </div>
+
+  <div class="main-col"><main>
+    <div id="thread">
+      <article data-testid="conversation-turn-1" data-turn="user">
+        <h5 class="sr-only">You said:</h5>
+        <div class="user-bubble"><div class="whitespace-pre-wrap">Give me three ideas for a weekend trip near the mountains, nothing too expensive.</div></div>
+      </article>
+      <article data-testid="conversation-turn-2" data-turn="assistant">
+        <h6 class="sr-only">ChatGPT said:</h6>
+        <div class="markdown prose"><p>Here are three ideas that stay on a modest budget.</p><ol><li><strong>A cabin stay</strong> with a short hike to a lake each morning.</li><li><strong>A rail trip</strong> to a mountain town, walking everywhere once you arrive.</li><li><strong>Camping</strong> at a serviced site so you only need a tent and a stove.</li></ol><p>All three work for two nights.</p></div>
+        <div class="sources">Sources: example-travel-guide.test</div>
+      </article>
+      <article data-testid="conversation-turn-3" data-turn="user">
+        <h5 class="sr-only">You said:</h5>
+        <div class="user-bubble"><div class="whitespace-pre-wrap">Which of those is best in late autumn?</div></div>
+      </article>
+      <article data-testid="conversation-turn-4" data-turn="assistant">
+        <h6 class="sr-only">ChatGPT said:</h6>
+        <div class="markdown prose"><p>The rail trip. Late autumn brings early dark and cold nights, which make camping hard work and limit what you can do from a cabin.</p><p>Towns stay lively, and the scenery from the train is at its best when the leaves turn.</p></div>
+        <div class="sources">Sources: example-rail-timetable.test</div>
+      </article>
+    </div>
+    <form><textarea placeholder="Ask anything"></textarea></form>
+    <p class="notice">This assistant can make mistakes. Check important information.</p>
+  </main></div>
+</div>
+</body></html>

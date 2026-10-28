@@ -86,10 +86,17 @@ Everything the desktop app does, with three exceptions noted further down.
 
 Three things, all forced by what a browser lets an extension do.
 
-**Files go to Downloads.** Extensions cannot write to an arbitrary folder — the
-downloads API only accepts paths inside the browser's download directory. So
-everything lands in `Downloads/AI Chat Exports/`. Multi-file exports (code
-files) are bundled into one ZIP rather than triggering a download per file.
+**Files go to Downloads — unless you give it a folder.** Extensions cannot write
+to an arbitrary folder on their own; the downloads API only accepts paths inside
+the browser's download directory, so by default everything lands in
+`Downloads/AI Chat Exports/`. In Chrome and Edge, **Options → Where your files
+are kept → Choose a folder…** gives the extension a folder through the File
+System Access API: it then keeps its options (`settings/extension-settings.json`),
+the site rules (`rules/site-rules.json`) and exports (`exports/`) there. Pick the
+desktop app's data folder and both share one set of site rules. The browser asks
+for permission again after it restarts. Firefox has no such API. Multi-file
+exports (code files) are bundled into one ZIP rather than triggering a download
+per file.
 
 **PDF goes through the print dialog.** There is no `printToPDF` for extensions.
 The document is rendered and handed to the browser's own print engine, so you
@@ -140,9 +147,10 @@ extension/
   build.js                 esbuild bundling for both targets
   src/
     background/            image fetching, tab capture, workspace opening
-    content/               runs in the chat page: extraction and the picker
+    content/               runs in the chat page: extraction and the teach panel
     popup/                 thin launcher
-    panel/                 the workspace: preview, export, library, merge, batch
+    panel/                 the workspace: preview, export, site rules, library,
+                           merge, batch, help
     print/                 renders a document and opens the print dialog
     lib/                   browser API shim, storage, downloads, screenshots, exporters
   test/                    manifest validation + real-bundle tests in Chromium

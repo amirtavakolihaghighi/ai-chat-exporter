@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>ChatGPT</title>
+<style>
+  body { margin:0; font-family:system-ui; display:flex; }
+  nav { width:240px; flex:none; }
+  main { flex:1; }
+  .turn { padding:20px; border-bottom:1px solid #eee; }
+  .whitespace-pre-wrap { white-space: pre-wrap; }
+</style></head>
+<body>
+
+<!--
+  Three things real chat pages do that a reader has to get right:
+
+  - A prompt is shown with white-space: pre-wrap, so the line breaks and spaces
+    someone typed appear on screen. That styling does not travel with an export;
+    the breaks have to become real line breaks or the prompt is one long line.
+  - The browser tab says only "ChatGPT". The conversation's name — the one the
+    site generated — is on its entry in the list of chats, which links to the
+    page itself. (The link is pointed at this page by the script below.)
+  - The sidebar has collapsed menus. Unfold buttons there must not be pressed:
+    that opens the site's own menus while the chat is being read.
+-->
+
+<nav aria-label="Chat history">
+  <button aria-expanded="false" onclick="window.__menuOpened = true">Projects</button>
+  <a id="self" href="#"><span>Weekend plans in the mountains</span><button aria-label="Open conversation options">…</button></a>
+  <a href="/c/elsewhere"><span>Something else entirely</span></a>
+</nav>
+
+<main>
+  <h1>ChatGPT</h1>
+  <div data-message-author-role="user" class="turn"><div class="whitespace-pre-wrap">Plan a weekend for me:
+- Saturday: hiking
+- Sunday: rest
+
+Keep it cheap.
+    (this line is indented by four spaces)</div></div>
+
+  <div data-message-author-role="assistant" class="turn"><div class="markdown">
+    <p>Here is a plan that keeps costs down.</p>
+    <button aria-expanded="false" onclick="this.nextElementSibling.hidden = false">Show more</button>
+    <p hidden>Bring a packed lunch on Saturday.</p>
+  </div></div>
+</main>
+
+<script>
+  // Point the chat-list entry at this very page, whatever path it was opened from.
+  document.getElementById('self').setAttribute('href', location.pathname);
+</script>
+</body></html>

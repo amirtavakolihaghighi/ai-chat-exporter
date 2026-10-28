@@ -10,6 +10,119 @@ repository has one release and this file lists several versions.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A redesigned site no longer exports the wrong thing as a success.** When a
+  site's selectors stopped matching, the reader quietly fell back to guessing the
+  layout — and on ChatGPT the guess picked the sidebar of past chats, which holds
+  more text than a short conversation. The export was the list of chats, and
+  the app reported it as a success, because "used the pack" meant the site
+  *had* selectors, not that they matched. Rules that find nothing now stop the
+  read and say so, with a button to fix them.
+- **The layout guesser no longer reads sidebars and menus.** Navigation
+  landmarks, narrow side panels and lists of links are excluded, and inline
+  script text — hydration data on modern sites — is no longer counted as page
+  text, which skewed every "share of the page" measurement.
+- **The same words sent twice are two messages.** Messages were recognised by
+  their content alone, so a second "continue" was taken for the first one seen
+  again and dropped. Both are kept now; a message is only taken for one seen
+  before when that one is no longer on the page.
+- **Host matching is exact.** Built-in hostnames matched anywhere inside an
+  address, so `g.co` claimed blog.company.com for Gemini. Only fragments with
+  no dot, such as `librechat`, still match that way.
+- Opening the page already open in the desktop app no longer logs an error.
+- **Files are named after the chat, not its address.** The title is now taken
+  from the site's own list of chats (on ChatGPT, the name it gave the chat), and
+  the site's name is stripped from the page title. When the browser refused a
+  name, the extension's last resort left the browser to name the file after the
+  download's internal address — a long id. It always offers the proper name now,
+  the extension's PDFs are offered it in the print dialog, and a file renamed by
+  something else, such as a download manager (IDM), is reported.
+- **Your messages keep the lines you typed.** Line breaks, blank lines and
+  indentation in your prompts used to run together into one line in every
+  format.
+- Reading no longer clicks "Show more" buttons outside the conversation, such
+  as the sidebar's menus.
+
+### Added
+
+- **Site rules**, replacing the one-click picker. A site's rules say which parts
+  of its pages are your messages, the AI's replies, reasoning, areas to leave
+  out, the title and more — each part with its own colour, used everywhere.
+- **Teach mode**: a panel over the chat that draws what the rules find as
+  coloured, labelled boxes. Choose a part, click it on the page, make the box
+  bigger or smaller, add. A site with no rules — or rules that no longer fit —
+  starts from the app's own proposal, so most of the time teaching is checking
+  the colours and pressing Save. Undo, pause, a live preview of what a read
+  would give, and rules limited to part of a site.
+- **Show on page**: draws the current rules over the chat without changing them.
+- **A health report on every read**: what each part found, and anything that
+  looks wrong — a part that found nothing, only one speaker, messages in the
+  site's menu, a much shorter read than the last export of the same chat. The
+  reading result says it in plain words, with the button that fixes it.
+- **The Site rules tab**, in both apps: every rule set, yours and built-in, with
+  when it last worked and what it found. Switch rules on and off, show and fix
+  them, rename, copy built-in rules, remove and restore built-in rules, export
+  and import rule files, and view the selectors behind them.
+- **Batch export checks rules**: sites with no rules are skipped unless you
+  allow guessing, and sites whose rules fail are skipped with the reason.
+- **The user manual inside both apps** (Manual button, F1, Help menu), with
+  search, rendered from the same `docs/MANUAL.md` as the repository's copy.
+- **"What's this?" mode** (?, Shift+F1): click any control to see what it does,
+  with a link into the manual. A test keeps every control, its explanation and
+  the manual in step.
+- A **Help** menu in the desktop app, and **Site rules** and **Manual** links in
+  the extension's toolbar window.
+- **Several rule sets for one site.** Each site has one card listing the
+  built-in rules and all of yours; the round button chooses the one that reads
+  the site, **Back to the built-in rules** returns to them, and **Make a copy**
+  starts a new rule set from any of them. The "This site" card gets a quick
+  **Rules to use** switch.
+- **A last step when saving taught rules**: name them, update the rule set they
+  came from or save a new one, choose where on the site they apply, and whether
+  the site is read with them from now on.
+- **A data folder** for the desktop app, one folder for each kind of file —
+  `settings`, `rules`, `library`, `exports` — inside the project when run from
+  it (`data/`, ignored by git), beside the portable .exe, or in
+  `%APPDATA%\AI Chat Extractor\data` when installed (where exports still go to
+  `Documents\AI Chat Exports`, since that folder is hidden). Options shows it,
+  opens it and moves it.
+- **A folder for the extension** (Chrome, Edge): its options, the site rules and
+  exports are kept there as well as in the browser. Pointed at the desktop
+  app's data folder, both share one set of site rules; changes in either are
+  taken in by the other.
+- **Default options in `config/default-settings.json`**, shared by both apps.
+  Settings files hold only the options you changed, and **Reset all options to
+  defaults** puts them back.
+
+### Changed
+
+- **The built-in rules are ordinary rule sets**, in the same format as the ones
+  you teach, so they can be seen, checked, chosen and removed. Fixing one saves
+  a rule set of your own and never edits the original.
+- **A site is read by the rule set chosen for it**, not by whichever of yours
+  exists: rule sets of your own made by earlier versions stay in use, but a new
+  copy is not used until you choose it. The on/off switch is gone — choosing
+  another rule set, or going back to the built-in rules, replaces it.
+- **The desktop app's files move into the data folder.** On first start they
+  are copied from `%APPDATA%\AI Chat Extractor` — never moved; the originals
+  stay as a backup. Run from the project or as the portable app, exports now go
+  to the data folder's `exports` rather than `Documents\AI Chat Exports`
+  (exports made there stay there); the installed app keeps Documents. Sign-ins
+  and the browser's cache stay in `%APPDATA%`.
+- **Rule sets are self-contained.** A picked rule used to be laid over the
+  built-in one field by field, quietly inheriting settings that might not fit
+  it. Nothing is merged now.
+- Rules from the one-click picker are converted on first start and tagged "Old
+  picker"; they read exactly as before. The old `user-packs.json` (and the
+  extension's old storage key) is left untouched as a backup.
+- The user manual is rewritten for people who have never thought about how a
+  web page is built, and covers every button, menu and option.
+
+### Removed
+
+- The one-click picker (`src/inject/picker.js`), replaced by teach mode.
+
 ## [1.1.5] — 2026-09-03
 
 First published release.

@@ -13,7 +13,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const ROOT = path.join(__dirname, '..');
-const { PROVIDERS, COMMON_STRIP, COMMON_EXPAND } = require('../src/shared/providers');
+const { COMMON_STRIP, COMMON_EXPAND } = require('../src/shared/providers');
+const siteRules = require('../src/shared/rules');
 const inject = require('../src/main/lib/inject');
 
 const REPORT = path.join(__dirname, 'benchmark.txt');
@@ -26,12 +27,12 @@ const say = (l) => {
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
 
-async function timeFixture(win, fixture, pack, label) {
+async function timeFixture(win, fixture, rules, label) {
   await win.loadFile(path.join(__dirname, 'fixtures', fixture));
   await new Promise((r) => setTimeout(r, 300));
 
   const source = await inject.buildExtractorSource({
-    pack: pack || {},
+    rules: rules || null,
     commonStrip: COMMON_STRIP,
     commonExpand: COMMON_EXPAND,
     embedImages: false,
@@ -60,14 +61,14 @@ app.whenReady().then(async () => {
     webPreferences: { contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
   });
 
-  const chatgpt = PROVIDERS.find((p) => p.id === 'chatgpt');
+  const chatgpt = siteRules.compile(siteRules.builtinById('chatgpt'), 'https://chatgpt.com/');
   say('fixture                            messages     time  path');
   say('-'.repeat(96));
 
   const long = await timeFixture(win, 'fixture-long.html', chatgpt, '80 messages, all in the DOM');
   const virtual = await timeFixture(win, 'fixture-virtual.html', chatgpt, '24 messages, virtualised');
   const short = await timeFixture(win, 'fixture-chatgpt.html', chatgpt, '6 messages, all in the DOM');
-  const unknown = await timeFixture(win, 'fixture-unknown.html', {}, '6 messages, unknown layout');
+  const unknown = await timeFixture(win, 'fixture-unknown.html', null, '6 messages, unknown layout');
 
   say('');
   const ok =

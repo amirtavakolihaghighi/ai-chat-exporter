@@ -8,13 +8,15 @@
  * page is already loaded in the user's own session, so private conversations
  * need no share link and no second sign-in.
  *
- * The heavy lifting is the same extractor the desktop app injects, imported
- * here as a module rather than pasted in as text.
+ * The heavy lifting is the same extractor and teach overlay the desktop app
+ * injects, imported here as modules rather than pasted in as text. Which rules
+ * apply is decided by the workspace, which has the stored rules, and sent here
+ * ready to use.
  */
 
 const { createExtractor } = require('../../../src/inject/extract.js');
-const { startPicker } = require('../../../src/inject/picker.js');
-const { PROVIDERS, COMMON_STRIP, COMMON_EXPAND, matchProvider } = require('../../../src/shared/providers.js');
+const { startTeach } = require('../../../src/inject/teach.js');
+const { COMMON_STRIP, COMMON_EXPAND } = require('../../../src/shared/providers.js');
 
 const api = typeof globalThis.browser !== 'undefined' ? globalThis.browser : globalThis.chrome;
 
@@ -33,25 +35,11 @@ if (globalThis.__aceContentLoaded) {
       .catch(() => null);
   }
 
-  function resolvePack(userPacks) {
-    const builtin = matchProvider(location.href, PROVIDERS) || {};
-    const host = location.hostname.toLowerCase();
-    const user = (userPacks || {})[host] || {};
-    const merged = { ...builtin, ...user };
-    if (builtin.genericName && !user.name) merged.name = host || builtin.name;
-    if (user.turnSelector) merged.name = user.name || merged.name || host;
-    return {
-      pack: merged,
-      source: user.turnSelector ? 'user' : builtin.id ? 'builtin' : 'heuristic',
-    };
-  }
-
   async function capture(request) {
-    const { pack, source } = resolvePack(request.userPacks);
     const settings = request.settings || {};
 
     const config = {
-      pack,
+      rules: request.rules || null,
       commonStrip: COMMON_STRIP,
       commonExpand: COMMON_EXPAND,
       embedImages: settings.embedImages !== false,
@@ -63,8 +51,7 @@ if (globalThis.__aceContentLoaded) {
       fetchAsDataUrl: settings.embedImages === false ? null : fetchAsDataUrl,
     };
 
-    const result = await createExtractor(config);
-    return { ...result, packSource: source, packName: pack.name || location.hostname };
+    return createExtractor(config);
   }
 
   api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -75,18 +62,9 @@ if (globalThis.__aceContentLoaded) {
         sendResponse({ ok: true });
         return undefined;
 
-      case 'ace:describe': {
-        const { pack, source } = resolvePack(message.userPacks);
-        sendResponse({
-          ok: true,
-          url: location.href,
-          host: location.hostname,
-          title: document.title,
-          providerName: pack.name || location.hostname,
-          packSource: source,
-        });
+      case 'ace:describe':
+        sendResponse({ ok: true, url: location.href, host: location.hostname, title: document.title });
         return undefined;
-      }
 
       case 'ace:capture':
         capture(message)
@@ -94,11 +72,17 @@ if (globalThis.__aceContentLoaded) {
           .catch((err) => sendResponse({ ok: false, error: String((err && err.stack) || err) }));
         return true; // response is async
 
-      case 'ace:pick':
-        startPicker()
+      case 'ace:teach':
+        // Settles only when the person saves or closes the panel on the page.
+        startTeach(message.options || {})
           .then((result) => sendResponse({ ok: true, result }))
-          .catch((err) => sendResponse({ ok: false, error: String(err) }));
+          .catch((err) => sendResponse({ ok: false, error: String((err && err.stack) || err) }));
         return true;
+
+      case 'ace:teachClose':
+        if (typeof window.__aceTeachClose === 'function') window.__aceTeachClose();
+        sendResponse({ ok: true });
+        return undefined;
 
       /* ---- the scroll-and-stitch screenshot needs the page driven by us ---- */
 

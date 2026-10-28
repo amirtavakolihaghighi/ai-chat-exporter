@@ -37,6 +37,8 @@ const STATIC_FILES = [
   ['src/popup/popup.css', 'popup.css'],
   ['src/panel/panel.html', 'panel.html'],
   ['src/panel/panel.css', 'panel.css'],
+  // The interface pieces both apps share; see src/shared/ui.js.
+  ['../src/shared/ui.css', 'ui.css'],
   ['src/print/print.html', 'print.html'],
 ];
 
@@ -79,6 +81,9 @@ async function buildTarget(target, { watch = false } = {}) {
     // The shared core is CommonJS written for Node; these shims let the same
     // files run unmodified in a browser bundle.
     inject: [path.join(ROOT, 'src/lib/node-shim.js')],
+    // The user manual travels inside the workspace bundle as text, so the
+    // extension shows the same document as the repository and the desktop app.
+    loader: { '.md': 'text' },
   };
 
   if (watch) {

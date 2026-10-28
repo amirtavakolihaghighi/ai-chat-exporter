@@ -1,5 +1,93 @@
 # Troubleshooting
 
+## Site rules
+
+Most reading problems come down to a site's rules — which parts of its pages the
+app treats as messages. The [manual](MANUAL.md#site-rules) explains them; these
+are the problems people actually run into.
+
+### "… rules … found no messages on this page"
+
+The site has changed its design, and the rules no longer fit it. Earlier
+versions guessed instead when this happened, and on ChatGPT the guess picked
+the sidebar of past chats — exporting the list of chats as if it were the
+conversation, and reporting success. Rules now stop and say so.
+
+Press **✎ Fix the rules**. The teach panel opens on the page, notices that the
+old rules find nothing, and proposes rules for the new layout: blue boxes
+around your messages, green around the AI's. If the colours are right, press
+**Save rules**. The chat is read again straight away.
+
+For a chat you need right now, **Read once by guessing** reads it without the
+rules, this once — check the preview.
+
+### Only my messages come out (or only the AI's)
+
+One of the two message parts is missing or broken. The reading result says
+which: "Only your messages were found, none from the AI". Press **✎ Fix the
+rules** — the panel starts on the missing part — and click one of those
+messages on the page.
+
+Rules from the old one-click picker cause this on every read: that tool could
+only point at one kind of message. They are tagged **Old picker** in the Site
+rules tab; fixing them once solves it.
+
+### The sidebar, menu or buttons end up in the export
+
+The rules point at page furniture. The reading result says "Most of what was
+read is in the site's menu or sidebar". Open **Show on page** to see the boxes,
+then **Fix these rules**: point at a real message, and use **Leave out** on the
+sidebar so nothing in it is ever read.
+
+### Some messages have no box on the page
+
+Those messages look different from the rest — an image reply, a message with an
+attachment, a reply in a different layout. In the teach panel, choose the part
+they belong to and click one of them: it is added as another *way*, alongside
+the first. Each way can be checked by hovering over it.
+
+### The box covers only a paragraph, or several messages at once
+
+After clicking, use **▲ Bigger** or **▼ Smaller** (or the arrow keys) until one
+box covers exactly one message, then **✓ Add**.
+
+### Rules work on shared links but not my own chats (or the reverse)
+
+Many sites lay out shared links and private chats differently. In the last step
+of saving, choose **Where on the site: only pages under …** to keep separate
+rules for each kind of page. Both can exist at once; the narrower one wins on its
+own pages.
+
+### I want the built-in rules back
+
+In the Site rules tab, on the site's card:
+
+- **↺ Back to the built-in rules** — the site is read with them again. Your own
+  rule sets for it stay in the list, ready to choose again;
+- or press the round button on the **Built-in** row;
+- a built-in set you removed is under **Removed built-in rules** at the bottom:
+  **Restore**.
+
+### I want two sets of rules for one site, and to switch between them
+
+Keep both: when saving in the teach panel, choose **a new rule set, keeping that
+one as it is**, and give it a name. Or **More ▾ → Make a copy** on any row in
+the Site rules tab. Then switch with the round buttons there, or with **Rules to
+use** on the "This site" card. See
+[Several rule sets for one site](MANUAL.md#several-rule-sets-for-one-site).
+
+### Rules I deleted in the extension came back
+
+That happens when the extension and the desktop app share a folder and both
+changed the rules before they were next compared: the extension keeps
+everything from both copies rather than risk losing a rule set. Delete it again;
+it stays deleted once both copies agree.
+
+### Moving rules to another computer, or between the desktop app and the extension
+
+**Export…** in the Site rules tab saves your rules to a file; **Import…** in the
+other app adds them. A rules file never contains your conversations.
+
 ## Reading
 
 ### The read is slow
@@ -26,14 +114,15 @@ Let it finish before switching away.
 2. Raise **Scroll settle** to 800–1200 ms.
 3. If the status mentions the read being stopped early, raise **Give up reading
    after**.
-4. Check the badge — an amber "unknown site" badge means the layout was guessed.
+4. Check the badge — an amber "no rules · will guess" badge means the layout was
+   guessed. Teach the site.
+5. Press **Show on page**: a message with no box is one the rules do not find.
 
 ### Nothing was found at all
 
-The site is not recognised and the guess failed. Use **Pick a message by hand**
-(see the [manual](MANUAL.md#pick-a-message-by-hand)). If the site is genuinely
-hostile to parsing, export as PDF or PNG in "as shown" mode, which needs no
-parsing.
+The site has no rules and the guess failed. Press **✎ Teach this site** (see the
+[manual](MANUAL.md#teaching-a-site)). If the site is genuinely hostile to
+parsing, export as PDF or PNG in "as shown" mode, which needs no parsing.
 
 ### Images show as broken in the exported file
 
@@ -52,8 +141,8 @@ in to the provider in the same browser.
 
 ### A screenshot I attached is missing from the export
 
-Fixed in 1.1.4. Attachments sit outside the element a provider pack names as the
-message body, and were being dropped while the site still displayed them.
+Fixed in 1.1.4. Attachments sit outside the element a rule names as the message
+text, and were being dropped while the site still displayed them.
 
 Two things worth knowing about attachments generally:
 
@@ -73,25 +162,20 @@ Note that generated images are served from URLs that expire. **Download and
 embed images** (on by default) fetches them at export time so the file keeps
 working; with it off, the export references a link that will eventually die.
 
-### The site is read wrongly and the picker does not fix it
+### Teaching the site does not fix it
 
-The picker teaches the app *which elements are messages*. It does not teach it
-*who said them* — if a site gives no usable signal for that, roles fall back to
-assuming the conversation alternates, and any stray element captured as a
-message throws that alternation out.
+Some sites give their messages nothing to tell them apart by — no names, no
+stable labels, a different arrangement every time the site is rebuilt. Rules
+cannot be made reliable for those, however carefully they are taught.
 
-To get a proper rule written for the site, run
-[`docs/site-report.js`](site-report.js) in the browser console on the chat page
-and include its output in an issue. It describes the page structure, with message
-text truncated to 40 characters, so it says how the site is built without
-carrying your conversation with it.
+To get built-in rules written for such a site, send two things in an issue:
 
-### The wrong things were captured — page furniture, sidebars
-
-Same fix: **Pick a message by hand**, and click one message rather than a
-container around it. The match count it reports should be roughly the number of
-messages in the chat; if it says 1, or several hundred, you picked too deep or too
-shallow.
+1. **Your rules**, from **Site rules → More ▾ → Export** on the site's card,
+   even if they only half work.
+2. **A site report**: run [`docs/site-report.js`](site-report.js) in the browser
+   console on the chat page. It describes the page structure, with message text
+   cut to 40 characters, so it says how the site is built without carrying your
+   conversation with it.
 
 ## Saving
 
@@ -107,13 +191,58 @@ safe punctuation, and if a name is still rejected the export retries with an
 ASCII-only name and finally with the Save-as dialog. If you see a note saying a
 file was saved under a different name, that is this working.
 
+### The file is named after the chat's address, or a long string of letters and digits
+
+The name comes from the **Filename template** — `{date} - {provider} - {title}`
+by default — and `{title}` is the chat's name as the site shows it in its list
+of chats (on ChatGPT, the name it gave the chat). Two things used to get in the
+way, and both are fixed:
+
+- When the browser refused a name, the extension's last resort could leave the
+  browser to name the file after the download's internal address — a long string
+  of letters and digits that looks like an id. It now always offers the proper
+  name.
+- PDFs from the extension are named in the print dialog, which suggested the
+  page's title. It now suggests the same name every other format gets.
+
+If a file is still named wrongly, look at the note in the results: **"Saved as …,
+not …: something else renamed it"** means another program took the download
+over. Download managers such as **IDM** do this, and name the file after the
+download's address. Tell the download manager to leave the browser's downloads
+alone, at least from this extension — or choose a folder for the extension in
+Options, which it writes to directly, without downloads.
+
+### My message's line breaks are missing in the export
+
+They are kept now: your prompts come out with the line breaks and indentation you
+typed, in every format. If one site still loses them, that site shows your
+message in an unusual way — please report it (see below), with the site's name.
+
 ### Where did my files go?
 
-**Extension:** `Downloads/AI Chat Exports/`. Extensions cannot write anywhere
-else — the download API only accepts paths inside the browser's download folder.
+**Desktop:** wherever **Save to** points — by default the `exports` folder in the
+data folder (see [Where your data lives](MANUAL.md#where-your-data-lives)). The
+results list has **open** and **folder** buttons.
 
-**Desktop:** wherever **Save to** points; the results list has **open** and
-**folder** buttons.
+**Extension:** `Downloads/AI Chat Exports/` — or, if you chose a folder in
+Options, its `exports` folder. Without a folder, extensions cannot write anywhere
+but the browser's download folder.
+
+### Where are my settings and rules?
+
+**Desktop:** in the data folder — **Options → Where your files are kept** shows
+it, and **File → Open data folder** opens it. Running from the project, that is
+the project's `data` folder.
+
+**Extension:** in the browser's own storage, and in the folder you chose in
+Options, if you chose one. See
+[A folder for the extension](MANUAL.md#a-folder-for-the-extension).
+
+### The extension's folder says "waiting for your permission"
+
+The browser asks again after it restarts. Press **Allow access again** in
+Options. Until you do, changes stay in the browser and exports go to Downloads;
+nothing is lost, and the folder catches up once allowed.
 
 ### Images are missing from an old export
 
@@ -200,9 +329,11 @@ provider-specific.
 
 Also helpful:
 
-1. The status bar text when it went wrong.
-2. For a short read: the real message count versus the reported one.
-3. For a broken export: the file itself.
-4. Console output — desktop: **View → Toggle Developer Tools**, or the gear button
+1. The reading result and the status bar text when it went wrong.
+2. For a site read wrongly: the site's rules, exported from its card in the Site
+   rules tab.
+3. For a short read: the real message count versus the reported one.
+4. For a broken export: the file itself.
+5. Console output — desktop: **View → Toggle Developer Tools**, or the gear button
    in the viewer toolbar for the loaded page. Extension: right-click the workspace
    and **Inspect**.

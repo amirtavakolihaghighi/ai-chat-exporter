@@ -4,11 +4,19 @@ const { app, BrowserWindow, ipcMain, dialog, shell, session, screen, Menu } = re
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const { marked } = require('marked');
+
 const store = require('./lib/store');
+const paths = require('./lib/paths');
 const convert = require('./lib/convert');
 const inject = require('./lib/inject');
 const { exportConversation, exportMerged } = require('./exporters');
-const { PROVIDERS, COMMON_STRIP, COMMON_EXPAND, matchProvider } = require('../shared/providers');
+const { PROVIDERS, COMMON_STRIP, COMMON_EXPAND } = require('../shared/providers');
+const rules = require('../shared/rules');
+const { PARTS } = require('../shared/parts');
+const help = require('../shared/help');
+
+const MANUAL = path.join(__dirname, '..', '..', 'docs', 'MANUAL.md');
 
 const GUEST_PARTITION = 'persist:aichats';
 const isDev = process.argv.includes('--dev');
@@ -113,28 +121,11 @@ function configureGuestWebContents() {
 
 /* ------------------------------------------------------- injection sources */
 
-/** Built-in pack for the URL, overlaid with anything the user taught us. */
-function resolvePack(url) {
-  const builtin = matchProvider(url, PROVIDERS) || {};
-  let host = '';
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    /* unparseable URL: fall through with an empty host */
-  }
-  const userPacks = store.getUserPacks();
-  const user = userPacks[host] || {};
-  const merged = { ...builtin, ...user };
-  if (builtin.genericName && !user.name) merged.name = host || builtin.name;
-  if (user.turnSelector) merged.name = user.name || merged.name || host;
-  return { pack: merged, source: user.turnSelector ? 'user' : builtin.id ? 'builtin' : 'heuristic' };
-}
-
-async function buildExtractorSource(url) {
+async function buildExtractorSource(url, { ignoreRules = false } = {}) {
   const settings = store.getSettings();
-  const { pack, source } = resolvePack(url);
+  const { set, source } = ignoreRules ? { set: null, source: 'none' } : rules.resolve(url, store.getSiteRules());
   const config = {
-    pack,
+    rules: rules.compile(set, url),
     commonStrip: COMMON_STRIP,
     commonExpand: COMMON_EXPAND,
     embedImages: settings.embedImages !== false,
@@ -144,7 +135,84 @@ async function buildExtractorSource(url) {
     maxTotalImageBytes: 150 * 1024 * 1024,
     maxDurationMs: Math.max(15000, (settings.maxReadSeconds || 90) * 1000),
   };
-  return { source: await inject.buildExtractorSource(config), packSource: source, pack };
+  return { source: await inject.buildExtractorSource(config), rulesSource: source };
+}
+
+/**
+ * The teach overlay for the page at `url`: the rules that apply there (or the
+ * set named by `ruleId`, from the rule manager), the part colours and labels,
+ * and which part to start on.
+ */
+async function buildTeachSource({ url, mode, ruleId, focus }) {
+  const data = store.getSiteRules();
+  const set = ruleId ? rules.findSet(data, ruleId) : rules.resolve(url, data).set;
+  let host = '';
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    /* a page with no host, such as a local file */
+  }
+  const source = await inject.buildTeachSource({
+    mode: mode === 'show' ? 'show' : 'teach',
+    parts: PARTS,
+    rules: set
+      ? { name: rules.displayName(set, url), origin: set.origin, parts: set.parts, options: set.options, pathPrefix: set.pathPrefix }
+      : null,
+    siteName: host || 'this page',
+    focus: focus || null,
+    saving: rules.saveChoices(data, url, set ? set.id : null),
+  });
+  return { source, ruleId: set ? set.id : null };
+}
+
+/* ------------------------------------------------------- the data folder */
+
+/**
+ * Moves the data folder: copies settings, rules and library to `dir` (or to
+ * the default folder when `dir` is null) and uses it from the next start. A
+ * folder that already holds the app's files is used as it is — nothing is
+ * copied over them — and the old folder is never changed.
+ */
+async function moveDataTo(dir) {
+  const target = dir ? path.resolve(dir) : paths.defaultDir();
+  if (path.resolve(target) === path.resolve(paths.dataDir())) {
+    if (!dir) paths.choose(null);
+    return { changed: false, same: true, dir: target };
+  }
+  const there = paths.filesIn(target);
+  if (there.length) {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      buttons: ['Use the files there', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      message: 'That folder already has AI Chat Extractor files in it.',
+      detail: `It has your ${there.join(', ')} already. The app will use those from now on; nothing is copied over them, and the files in the current folder stay as they are.`,
+    });
+    if (response !== 0) return { changed: false };
+  } else {
+    await store.copyDataTo(target);
+  }
+  paths.choose(dir ? target : null);
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    buttons: ['Restart now', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+    message: 'Your files will be kept in the new folder from the next start.',
+    detail: `${target}\n\nThey were copied there; the old folder was left as it was. Chats you already exported stay where they are.`,
+  });
+  if (response === 0) {
+    app.relaunch();
+    app.exit(0);
+  }
+  return { changed: true, dir: target };
+}
+
+/** The user manual, rendered for the in-app viewer. */
+async function renderManual() {
+  const markdown = await fs.readFile(MANUAL, 'utf8');
+  return help.buildManual(markdown, (text) => marked.parse(text));
 }
 
 /* ------------------------------------------------------------------- IPC */
@@ -152,15 +220,73 @@ async function buildExtractorSource(url) {
 function registerIpc() {
   ipcMain.handle('settings:get', () => store.getSettings());
   ipcMain.handle('settings:save', (_e, patch) => store.saveSettings(patch || {}));
+  ipcMain.handle('settings:reset', () => store.resetSettings());
+
+  /* ---- where files are kept ---- */
+  ipcMain.handle('data:info', () => paths.info());
+  ipcMain.handle('data:open', async (_e, which) => {
+    const target = which === 'exports' ? paths.exportsDir() : paths.FOLDERS.includes(which) ? paths.folder(which) : paths.dataDir();
+    await fs.mkdir(target, { recursive: true });
+    return shell.openPath(target);
+  });
+  ipcMain.handle('data:change', async () => {
+    const picked = await dialog.showOpenDialog(mainWindow, {
+      title: 'Where should AI Chat Extractor keep your files?',
+      defaultPath: paths.dataDir(),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (picked.canceled || !picked.filePaths.length) return { changed: false };
+    return moveDataTo(picked.filePaths[0]);
+  });
+  ipcMain.handle('data:useDefault', () => moveDataTo(null));
 
   ipcMain.handle('providers:list', () =>
     PROVIDERS.map((p) => ({ id: p.id, name: p.name, hosts: p.hosts }))
   );
-  ipcMain.handle('packs:get', () => store.getUserPacks());
-  ipcMain.handle('packs:save', (_e, { host, pack }) => store.saveUserPack(host, pack));
-  ipcMain.handle('packs:resolve', (_e, url) => resolvePack(url));
+
+  /* ---- site rules ---- */
+  ipcMain.handle('rules:resolve', (_e, url) => rules.siteSummary(url, store.getSiteRules()));
+  ipcMain.handle('rules:groups', (_e, url) => rules.siteGroups(store.getSiteRules(), url));
+  ipcMain.handle('rules:suggestName', (_e, { url, baseId }) => rules.suggestName(store.getSiteRules(), url, baseId));
+  ipcMain.handle('rules:saveTaught', (_e, payload) =>
+    store.updateSiteRules((data) => rules.saveTaught(data, payload || {}))
+  );
+  ipcMain.handle('rules:saveSet', (_e, set) => store.updateSiteRules((data) => rules.saveUserSet(data, set || {})));
+  ipcMain.handle('rules:delete', (_e, id) => store.updateSiteRules((data) => rules.deleteUserSet(data, id)));
+  ipcMain.handle('rules:setDefault', (_e, id) => store.updateSiteRules((data) => rules.setDefault(data, id)));
+  ipcMain.handle('rules:duplicate', (_e, id) => store.updateSiteRules((data) => rules.duplicateSet(data, id)));
+  ipcMain.handle('rules:removeBuiltin', (_e, id) => store.updateSiteRules((data) => rules.removeBuiltin(data, id)));
+  ipcMain.handle('rules:restoreBuiltin', (_e, id) => store.updateSiteRules((data) => rules.restoreBuiltin(data, id)));
+  ipcMain.handle('rules:recordHealth', (_e, { id, health }) =>
+    store.updateSiteRules((data) => rules.recordHealth(data, id, health))
+  );
+  ipcMain.handle('rules:export', async (_e, ids) => {
+    const file = rules.exportSets(store.getSiteRules(), ids || []);
+    if (!file.sets.length) return { saved: null, count: 0 };
+    const stamp = new Date().toISOString().slice(0, 10);
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export site rules',
+      defaultPath: path.join(paths.folder('rules'), `AI Chat Extractor rules ${stamp}.json`),
+      filters: [{ name: 'Site rules', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) return { saved: null, count: 0 };
+    await fs.writeFile(result.filePath, JSON.stringify(file, null, 2), 'utf8');
+    return { saved: result.filePath, count: file.sets.length };
+  });
+  ipcMain.handle('rules:import', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import site rules',
+      filters: [{ name: 'Site rules', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    const parsed = JSON.parse(await fs.readFile(result.filePaths[0], 'utf8'));
+    const outcome = await store.updateSiteRules((data) => rules.importSets(data, parsed));
+    return { added: outcome.added, skipped: outcome.skipped, invalid: outcome.invalid };
+  });
 
   ipcMain.handle('library:get', (_e, limit) => store.getLibrary(limit));
+  ipcMain.handle('library:lastFor', (_e, url) => store.lastExportOf(url));
   ipcMain.handle('library:search', (_e, query) => store.searchLibrary(query));
   ipcMain.handle('library:clear', () => store.clearLibrary());
 
@@ -210,8 +336,11 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('inject:extractor', (_e, url) => buildExtractorSource(url));
-  ipcMain.handle('inject:picker', () => inject.buildPickerSource());
+  ipcMain.handle('inject:extractor', (_e, url, options) => buildExtractorSource(url, options || {}));
+  ipcMain.handle('inject:teach', (_e, options) => buildTeachSource(options || {}));
+  ipcMain.handle('inject:teachClose', () => inject.CLOSE_TEACH_SOURCE);
+
+  ipcMain.handle('help:manual', () => renderManual());
 
   ipcMain.handle('dialog:chooseDir', async (_e, current) => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -371,6 +500,10 @@ function buildMenu() {
           label: 'Open export folder',
           click: () => shell.openPath(store.getSettings().outDir),
         },
+        {
+          label: 'Open data folder (settings, rules, library)',
+          click: () => shell.openPath(paths.dataDir()),
+        },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -412,6 +545,31 @@ function buildMenu() {
         },
       ],
     },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'User manual',
+          accelerator: 'F1',
+          click: () => mainWindow?.webContents.send('help:open'),
+        },
+        {
+          label: 'What’s this? (click any control)',
+          accelerator: 'Shift+F1',
+          click: () => mainWindow?.webContents.send('help:whatsThis'),
+        },
+        { type: 'separator' },
+        {
+          label: 'About AI Chat Extractor',
+          click: () =>
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              message: `AI Chat Extractor ${app.getVersion()}`,
+              detail: 'Exports AI conversations to PDF, Word, Markdown, HTML, JSON, images and source files. Everything runs on this computer; nothing is uploaded.',
+            }),
+        },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -433,7 +591,8 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     buildMenu();
 
-    // Make sure the export folder exists before the first export attempt.
+    // The data folder and its parts, then the export folder, before anything is saved.
+    paths.ensureLayout();
     const settings = store.getSettings();
     await fs.mkdir(settings.outDir, { recursive: true }).catch(() => {});
 

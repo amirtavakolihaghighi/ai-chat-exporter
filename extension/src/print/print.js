@@ -40,6 +40,8 @@ async function main() {
   document.open();
   document.write(payload.html);
   document.close();
+  // "Save as PDF" suggests the page title as the file name.
+  if (payload.title) document.title = payload.title;
 
   // Give fonts and inlined images a chance to settle, otherwise the print
   // preview can open before images have decoded.

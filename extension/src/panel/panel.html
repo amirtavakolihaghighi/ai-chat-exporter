@@ -4,22 +4,27 @@
 <meta charset="utf-8">
 <title>AI Chat Extractor — Workspace</title>
 <link rel="stylesheet" href="panel.css">
+<link rel="stylesheet" href="ui.css">
 </head>
 <body>
 
 <header class="topbar">
   <div class="brand"><span class="mark">AI</span><span class="brandname">Chat Extractor</span></div>
-  <span class="badge" id="providerBadge">no chat read yet</span>
+  <span class="badge" id="providerBadge" data-help="rules-badge">no chat read yet</span>
   <span class="spacer"></span>
   <span class="status" id="status">Ready.</span>
+  <button class="helpbtn round" id="whatsThisBtn" data-help="help-whats-this"
+          title="What's this? Click any control to see what it does">?</button>
+  <button class="helpbtn" id="manualBtn" data-help="help-manual" title="User manual">Manual</button>
 </header>
 
 <nav class="tabs">
-  <button class="tab active" data-tab="capture">Capture &amp; export</button>
-  <button class="tab" data-tab="options">Options</button>
-  <button class="tab" data-tab="library">Library</button>
-  <button class="tab" data-tab="merge">Merge</button>
-  <button class="tab" data-tab="batch">Batch</button>
+  <button class="tab active" data-tab="capture" data-help="tab-export">Capture &amp; export</button>
+  <button class="tab" data-tab="rules" data-help="tab-rules">Site rules</button>
+  <button class="tab" data-tab="options" data-help="tab-options">Options</button>
+  <button class="tab" data-tab="library" data-help="tab-library">Library</button>
+  <button class="tab" data-tab="merge" data-help="tab-merge">Merge</button>
+  <button class="tab" data-tab="batch" data-help="tab-batch">Batch</button>
 </nav>
 
 <main>
@@ -30,24 +35,34 @@
     <div class="col main">
       <div class="card">
         <div class="row">
-          <button class="btn primary" id="readBtn" disabled>Read this chat</button>
-          <button class="btn" id="pickBtn" disabled
-                  title="Click one message in the page; the shape you pick is saved as a rule for this site">Pick a message by hand</button>
+          <button class="btn primary" id="readBtn" data-help="read" disabled>Read this chat</button>
         </div>
-        <div class="note" id="target">No tab attached. Open this from the extension button while a chat is on screen.</div>
-        <p class="muted small">
-          <strong>Pick a message by hand</strong> is for sites the reader does not
-          recognise. You click one message in the page and it works out a CSS
-          selector matching all the messages, then saves it as a rule for that
-          site so every later read uses it. Your rules are listed under
-          <strong>Options → Saved site rules</strong>, where you can remove any of
-          them; they live in the extension's own storage, nowhere else.
-        </p>
-        <div class="extract-status" id="extractStatus">Nothing read yet.</div>
+        <div class="note" id="target" data-help="ext-target">No tab attached. Open this from the extension button while a chat is on screen.</div>
+        <div class="extract-status" id="extractStatus" data-help="read-status">Nothing read yet.</div>
       </div>
 
-      <div class="card" id="previewCard" hidden>
-        <div class="selectbar">
+      <div class="card sitecard" id="siteCard" data-help="site-card">
+        <div class="sitecard-head">
+          <span class="dot" id="siteDot"></span>
+          <div class="sitecard-title">
+            <strong id="siteName">No chat attached</strong>
+            <small id="siteSub">Open this workspace from a chat to see which rules read it.</small>
+          </div>
+        </div>
+        <div class="chips" id="siteChips"></div>
+        <label class="sitecard-switch" id="siteSwitchRow" data-help="site-switch" hidden>
+          <span>Rules to use</span>
+          <select id="siteSwitch"></select>
+        </label>
+        <div class="sitecard-note" id="siteNote" hidden></div>
+        <div class="row">
+          <button class="btn" id="showRulesBtn" data-help="show-rules" disabled>Show on page</button>
+          <button class="btn" id="teachBtn" data-help="teach" disabled>Teach this site</button>
+        </div>
+      </div>
+
+      <div class="card" id="previewCard" data-help="preview" hidden>
+        <div class="selectbar" data-help="select-presets">
           <span id="selectionCount">all messages</span>
           <span class="spacer"></span>
           <button class="mini" data-select="all">all</button>
@@ -63,7 +78,7 @@
     <aside class="col side">
       <div class="card">
         <h3>Formats</h3>
-        <div class="formats" id="formats">
+        <div class="formats" id="formats" data-help="formats">
           <label><input type="checkbox" value="md" checked><span>Markdown</span></label>
           <label><input type="checkbox" value="docx"><span>Word .docx</span></label>
           <label><input type="checkbox" value="html"><span>HTML</span></label>
@@ -77,17 +92,66 @@
         </div>
         <p class="muted small" id="formatNotes"></p>
 
-        <div class="field">
+        <div class="field" data-help="filename-template">
           <label for="filenameTpl">Filename template</label>
           <input id="filenameTpl" type="text" spellcheck="false">
           <small>Tokens: {title} {provider} {host} {date} {time} {count} {id}</small>
         </div>
 
-        <button class="btn primary wide" id="exportBtn" disabled>Export</button>
+        <button class="btn primary wide" id="exportBtn" data-help="export" disabled>Export</button>
         <div class="results" id="results"></div>
         <p class="muted small">Files go to your Downloads folder, under
           <code>AI Chat Exports</code>. Browsers do not let an extension write
           anywhere else.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------- SITE RULES -->
+<section class="panel" data-panel="rules">
+  <div class="cols">
+    <div class="col main">
+      <div class="card">
+        <h3>Sites with rules of your own</h3>
+        <p class="muted small">One card per site. A site can have several rule
+          sets — the round button picks the one that reads it; the green one is
+          in use.</p>
+        <div class="rulelist" id="userRules"></div>
+        <h3>Other sites the extension knows</h3>
+        <p class="muted small">Read with the rules the extension ships with.
+          Make your own copy to change them, or remove them altogether.</p>
+        <div class="rulelist" id="builtinRules"></div>
+        <details class="removed" id="removedBox" data-help="rules-restore" hidden>
+          <summary>Removed built-in rules (<span id="removedCount">0</span>)</summary>
+          <div class="rulelist" id="removedRules"></div>
+          <button class="btn" id="restoreAllBtn">Restore all</button>
+        </details>
+      </div>
+    </div>
+    <aside class="col side">
+      <div class="card">
+        <h3>Site rules</h3>
+        <p class="muted small">Rules tell the extension which parts of a chat
+          page are messages, so it reads the chat and not the menu around it.
+          Each colour is one kind of part — the same colours you see on the
+          page when you press <strong>Show on page</strong>.</p>
+        <div class="legend" id="rulesLegend" data-help="rules-legend"></div>
+        <details class="legend-more">
+          <summary>What each colour means</summary>
+          <div id="rulesLegendMore"></div>
+        </details>
+        <div class="row rules-tools">
+          <input id="rulesFilter" type="text" spellcheck="false" placeholder="Find a site…" data-help="rules-filter">
+        </div>
+        <div class="row">
+          <label class="btn" for="rulesFileInput" data-help="rules-import">Import…</label>
+          <input id="rulesFileInput" type="file" accept="application/json,.json" hidden>
+          <button class="btn" id="rulesExportBtn" data-help="rules-export">Export…</button>
+        </div>
+        <p class="muted small">Exported rules go to <code>Downloads/AI Chat Exports</code>
+          — or, with a folder chosen in Options, to its <code>rules</code> folder.
+          They can be imported into the desktop app too.</p>
       </div>
     </aside>
   </div>
@@ -99,14 +163,14 @@
     <div class="col">
       <div class="card">
         <h3>Content</h3>
-        <label class="check"><input type="checkbox" id="optThinking"> Include reasoning / thinking blocks</label>
-        <label class="check"><input type="checkbox" id="optSystem"> Include system &amp; tool messages</label>
-        <label class="check"><input type="checkbox" id="optMeta"> Include title, source URL and date</label>
-        <label class="check"><input type="checkbox" id="optFrontmatter"> YAML frontmatter in Markdown (Obsidian)</label>
+        <label class="check" data-help="opt-thinking"><input type="checkbox" id="optThinking"> Include reasoning / thinking blocks</label>
+        <label class="check" data-help="opt-system"><input type="checkbox" id="optSystem"> Include system &amp; tool messages</label>
+        <label class="check" data-help="opt-meta"><input type="checkbox" id="optMeta"> Include title, source URL and date</label>
+        <label class="check" data-help="opt-frontmatter"><input type="checkbox" id="optFrontmatter"> YAML frontmatter in Markdown (Obsidian)</label>
 
         <h3>Images</h3>
-        <label class="check"><input type="checkbox" id="optEmbed"> Download and embed images</label>
-        <div class="field">
+        <label class="check" data-help="opt-embed"><input type="checkbox" id="optEmbed"> Download and embed images</label>
+        <div class="field" data-help="opt-assets">
           <label for="assetMode">Where images go</label>
           <select id="assetMode">
             <option value="inline">Inside the file (single self-contained file)</option>
@@ -115,18 +179,18 @@
         </div>
 
         <h3>Code files</h3>
-        <div class="field">
+        <div class="field" data-help="ext-min-code">
           <label for="minCodeLines">Ignore snippets shorter than (lines)</label>
           <input id="minCodeLines" type="number" min="1" max="50" step="1">
         </div>
-        <label class="check"><input type="checkbox" id="assistantOnlyCode"> Only take code from the assistant's replies</label>
+        <label class="check" data-help="ext-assistant-code"><input type="checkbox" id="assistantOnlyCode"> Only take code from the assistant's replies</label>
       </div>
     </div>
 
     <div class="col">
       <div class="card">
         <h3>Document style</h3>
-        <div class="field">
+        <div class="field" data-help="opt-theme">
           <label for="themeSel">Theme</label>
           <select id="themeSel">
             <option value="light">Light</option>
@@ -134,31 +198,31 @@
             <option value="serif">Serif (print-friendly)</option>
           </select>
         </div>
-        <div class="field">
+        <div class="field" data-help="opt-font">
           <label for="fontSizeIn">Body size (px)</label>
           <input id="fontSizeIn" type="number" min="10" max="24" step="1">
         </div>
-        <label class="check"><input type="checkbox" id="optBreakTurn"> Start every message on a new page (PDF)</label>
-        <label class="check"><input type="checkbox" id="optExpandLinks"> Print link targets after link text</label>
+        <label class="check" data-help="opt-break"><input type="checkbox" id="optBreakTurn"> Start every message on a new page (PDF)</label>
+        <label class="check" data-help="opt-links"><input type="checkbox" id="optExpandLinks"> Print link targets after link text</label>
 
         <h3>Reading</h3>
-        <div class="field">
+        <div class="field" data-help="opt-settle">
           <label for="settleMs">Scroll settle (ms)</label>
           <input id="settleMs" type="number" min="100" max="3000" step="50">
           <small>Raise this if a slow site renders messages after the scroll has passed them.</small>
         </div>
-        <div class="field">
+        <div class="field" data-help="opt-maxread">
           <label for="maxReadSeconds">Give up reading after (seconds)</label>
           <input id="maxReadSeconds" type="number" min="15" max="600" step="5">
           <small>A safety stop so a difficult page can never hang the read. If a
             long chat comes back short, raise this.</small>
         </div>
-        <div class="field">
+        <div class="field" data-help="ext-shot-delay">
           <label for="screenshotDelayMs">Screenshot step delay (ms)</label>
           <input id="screenshotDelayMs" type="number" min="250" max="3000" step="50">
           <small>Browsers rate-limit screen capture; below ~500 ms frames start failing.</small>
         </div>
-        <div class="field">
+        <div class="field" data-help="opt-jpeg">
           <label for="jpegQ">JPEG quality</label>
           <input id="jpegQ" type="number" min="10" max="100" step="1">
         </div>
@@ -170,16 +234,32 @@
         <h3>Redaction</h3>
         <p class="muted small">Applied to every format before anything is saved.
           Useful for stripping keys or names out of a chat you are about to share.</p>
-        <div id="redactions"></div>
-        <button class="btn" id="addRedactionBtn">Add a rule</button>
-
-        <h3>Saved site rules</h3>
-        <div id="userPacks" class="packlist"></div>
+        <div id="redactions" data-help="redaction"></div>
+        <button class="btn" id="addRedactionBtn" data-help="redaction-add">Add a rule</button>
 
         <h3>Privacy</h3>
         <p class="muted small">Everything runs in your browser. Nothing is
           uploaded, and the extension makes no requests of its own other than
-          fetching images from the chat you are exporting.</p>
+          fetching images from the chat you are exporting. Options and site
+          rules are kept in the browser's own storage — and in the folder below,
+          if you choose one.</p>
+      </div>
+
+      <div class="card" data-help="ext-folder">
+        <h3>Where your files are kept</h3>
+        <div class="datafolder-state"><span class="dot" id="folderDot"></span><strong id="folderText">Only in this browser</strong></div>
+        <p class="muted small" id="folderNote"></p>
+        <div class="datafolder-list" id="folderParts" hidden></div>
+        <div class="row">
+          <button class="btn" id="folderChooseBtn" data-help="ext-folder-choose">Choose a folder…</button>
+          <button class="btn primary" id="folderAllowBtn" data-help="ext-folder-allow" hidden>Allow access again</button>
+          <button class="btn" id="folderForgetBtn" data-help="ext-folder-forget" hidden>Stop using it</button>
+        </div>
+
+        <h3>Start over</h3>
+        <p class="muted small">Puts every option back as it was. Your rules,
+          library and exported chats are not touched.</p>
+        <button class="btn" id="resetSettingsBtn" data-help="settings-reset">Reset all options to defaults</button>
       </div>
     </div>
   </div>
@@ -191,9 +271,9 @@
     <h3>Search your exported chats</h3>
     <p class="muted small">Searches the full text of every conversation you have exported.
       All words must appear somewhere in the chat.</p>
-    <input id="librarySearch" type="text" spellcheck="false" placeholder="e.g. postgres index, or docker compose">
+    <input id="librarySearch" type="text" spellcheck="false" placeholder="e.g. postgres index, or docker compose" data-help="library-search">
     <div class="row" style="margin-top:10px">
-      <button class="btn danger" id="clearLibraryBtn">Clear library</button>
+      <button class="btn danger" id="clearLibraryBtn" data-help="library-clear">Clear library</button>
     </div>
     <div class="historylist" id="historyList"></div>
   </div>
@@ -208,29 +288,29 @@
         <p class="muted small">Combine several conversations into a single document
           with a table of contents. Sources come from your library, or from
           <code>.json</code> files you exported earlier.</p>
-        <div class="field">
+        <div class="field" data-help="merge-title">
           <label for="mergeTitle">Document title</label>
           <input id="mergeTitle" type="text" spellcheck="false" value="Merged AI conversations">
         </div>
         <div class="row">
-          <label class="btn" for="mergeFileInput">Add .json files…</label>
+          <label class="btn" for="mergeFileInput" data-help="merge-files">Add .json files…</label>
           <input id="mergeFileInput" type="file" accept="application/json,.json" multiple hidden>
-          <button class="btn" id="mergeClearBtn">Clear selection</button>
+          <button class="btn" id="mergeClearBtn" data-help="merge-clear">Clear selection</button>
         </div>
-        <div class="mergelist" id="mergeList"></div>
+        <div class="mergelist" id="mergeList" data-help="merge-list"></div>
       </div>
     </div>
     <aside class="col side">
       <div class="card">
         <h3>Formats</h3>
-        <div class="formats" id="mergeFormats">
+        <div class="formats" id="mergeFormats" data-help="merge-formats">
           <label><input type="checkbox" value="md" checked><span>Markdown</span></label>
           <label><input type="checkbox" value="html"><span>HTML</span></label>
           <label><input type="checkbox" value="docx"><span>Word .docx</span></label>
           <label><input type="checkbox" value="txt"><span>Plain text</span></label>
           <label><input type="checkbox" value="pdf"><span>PDF</span></label>
         </div>
-        <button class="btn primary wide" id="mergeRunBtn" disabled>Merge selected</button>
+        <button class="btn primary wide" id="mergeRunBtn" data-help="merge-run" disabled>Merge selected</button>
         <div class="results" id="mergeResults"></div>
       </div>
     </aside>
@@ -245,11 +325,13 @@
       read, exported with the formats chosen on the first tab, and closed again.
       Leave the browser alone while this runs — screenshots in particular need the
       tab to stay visible.</p>
-    <textarea id="batchUrls" rows="8" spellcheck="false"
+    <textarea id="batchUrls" rows="8" spellcheck="false" data-help="batch-urls"
               placeholder="https://chatgpt.com/share/…&#10;https://claude.ai/share/…"></textarea>
+    <label class="check" data-help="batch-guess"><input type="checkbox" id="batchGuess">
+      Also export sites that have no rules (their layout is guessed)</label>
     <div class="row">
-      <button class="btn primary" id="batchBtn">Run batch</button>
-      <button class="btn" id="batchStopBtn" hidden>Stop</button>
+      <button class="btn primary" id="batchBtn" data-help="batch-run">Run batch</button>
+      <button class="btn" id="batchStopBtn" data-help="batch-stop" hidden>Stop</button>
     </div>
     <div class="batchlog" id="batchLog"></div>
   </div>
@@ -258,6 +340,26 @@
 </main>
 
 <div class="busy" id="busy" hidden><div class="spinner"></div><span id="busyText">Working…</span></div>
+
+<div class="help-overlay" id="helpOverlay" hidden>
+  <div class="help-window" role="dialog" aria-label="User manual">
+    <header class="help-head">
+      <strong>User manual</strong>
+      <input id="helpSearch" type="search" spellcheck="false" placeholder="Search the manual…">
+      <button class="icon" id="helpClose" title="Close (Esc)">&#10005;</button>
+    </header>
+    <div class="help-body">
+      <nav class="help-toc" id="helpToc"></nav>
+      <article class="help-content" id="helpContent">Loading…</article>
+    </div>
+  </div>
+</div>
+
+<div class="help-tip" id="helpTip" hidden></div>
+<div class="whatsthis-bar" id="whatsThisBar" hidden>
+  <strong>What’s this?</strong> Click anything to see what it does.
+  <button class="btn" id="whatsThisDone">Done</button>
+</div>
 
 <script src="panel.js"></script>
 </body>

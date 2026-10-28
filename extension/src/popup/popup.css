@@ -52,7 +52,7 @@ header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .btn.primary { background: var(--accent-2); border-color: var(--accent-2); color: #fff; font-weight: 600; }
 .btn.primary:hover:not(:disabled) { background: #2f74e0; }
 
-.row { display: flex; gap: 14px; margin-top: 4px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; }
 .link {
   background: none; border: none; padding: 0;
   color: var(--accent); font: inherit; font-size: 12px; cursor: pointer;

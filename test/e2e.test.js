@@ -13,7 +13,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 
 const REPORT = path.join(__dirname, 'e2e-results.txt');
 try {
@@ -41,10 +41,25 @@ const fixture = path.join(__dirname, 'fixtures', 'fixture-chatgpt.html');
 
 app.disableHardwareAcceleration();
 
-// Point the app at a throwaway profile before it boots, so a test run never
-// writes settings, saved site rules or library entries into the real one.
+// Point the app at a throwaway profile and data folder before it boots, so a
+// test run never reads or writes the real settings, site rules or library —
+// which, run from the project, would otherwise be its data folder.
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-userdata-'));
 app.setPath('userData', userDataDir);
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-data-'));
+process.env.ACE_DATA_DIR = dataDir;
+const rulesFile = path.join(dataDir, 'rules', 'site-rules.json');
+
+// What an older version left in the profile folder, to be copied in on first start.
+fs.writeFileSync(path.join(userDataDir, 'settings.json'), JSON.stringify({
+  outDir: path.join(app.getPath('documents'), 'AI Chat Exports'),
+  theme: 'dark',
+  fontSize: 15,
+  pageSize: 'A4',
+}), 'utf8');
+fs.writeFileSync(path.join(userDataDir, 'library.json'), JSON.stringify([
+  { id: 'old-1', at: '2025-01-01T00:00:00.000Z', title: 'An old export', url: 'https://example.com/c/1', messages: [] },
+]), 'utf8');
 
 // Boot the real app. It registers every IPC handler and creates the window.
 require('../src/main/main.js');
@@ -80,9 +95,32 @@ function windowReady() {
   });
 }
 
+/**
+ * Fixtures served at real chat-site addresses inside the app's browser pane, so
+ * the built-in rules for those sites apply exactly as they would for real. Only
+ * the guest session is intercepted, and nothing leaves the machine.
+ */
+const SERVED = {
+  'chatgpt.com/c/classic': 'fixture-chatgpt.html',
+  'chatgpt.com/c/redesign': 'fixture-redesign.html',
+  'unknown-chat.example/c/1': 'fixture-unknown.html',
+};
+
+function serveFixtures() {
+  session.fromPartition('persist:aichats').protocol.handle('https', (request) => {
+    const url = new URL(request.url);
+    const file = SERVED[url.hostname + url.pathname];
+    if (!file) return new Response('not found', { status: 404 });
+    return new Response(fs.readFileSync(path.join(__dirname, 'fixtures', file)), {
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    });
+  });
+}
+
 app.whenReady().then(async () => {
   let win;
   try {
+    serveFixtures();
     win = await windowReady();
     await new Promise((r) => setTimeout(r, 800)); // let the renderer finish init
 
@@ -92,6 +130,31 @@ app.whenReady().then(async () => {
     });
 
     const run = (code) => win.webContents.executeJavaScript(code, true);
+
+    /* ---------------- the data folder ----------------------------------- */
+    const firstSettings = await run(`window.ace.settings.get()`);
+    check('data: options from an older version are carried over', firstSettings.theme === 'dark', firstSettings.theme);
+    check('data: the old default output folder is not; exports go to the data folder',
+      firstSettings.outDir === path.join(dataDir, 'exports'), firstSettings.outDir);
+    const copiedSettings = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings', 'settings.json'), 'utf8'));
+    check('data: the settings file holds only what was changed', JSON.stringify(copiedSettings) === '{"theme":"dark"}',
+      JSON.stringify(copiedSettings));
+    check('data: the old files are copied, never moved',
+      fs.existsSync(path.join(userDataDir, 'settings.json')) && fs.existsSync(path.join(userDataDir, 'library.json')) &&
+      fs.existsSync(path.join(dataDir, 'library', 'library.json')));
+    check('data: one folder for each kind of file, and a note saying which is which',
+      ['settings', 'rules', 'library', 'exports'].every((f) => fs.statSync(path.join(dataDir, f)).isDirectory()) &&
+      fs.existsSync(path.join(dataDir, 'README.txt')));
+    await run(`document.querySelector('.tab[data-tab="options"]').click(); true`);
+    await new Promise((r) => setTimeout(r, 400));
+    const dataCard = await run(`({
+      dir: document.getElementById('dataDir').textContent,
+      rows: Array.from(document.querySelectorAll('#dataFolders .datafolder-item strong')).map((s) => s.textContent),
+      changeLocked: document.getElementById('dataChangeBtn').disabled,
+    })`);
+    check('data: Options shows the folder and its parts', dataCard.dir === dataDir &&
+      dataCard.rows.join() === 'settings,rules,library,exports' && dataCard.changeLocked, JSON.stringify(dataCard));
+    await run(`document.querySelector('.tab[data-tab="export"]').click(); true`);
 
     /* ---------------- settings round-trip through real IPC -------------- */
     // Drive the actual controls rather than calling settings.save() directly:
@@ -112,6 +175,10 @@ app.whenReady().then(async () => {
     check('settings: UI changes persisted through IPC', saved.outDir === outDir, saved.outDir);
     check('settings: filename template persisted', saved.filenameTemplate === '{provider} - {title}',
       saved.filenameTemplate);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings', 'settings.json'), 'utf8'));
+    check('settings: only the changed options are written, in the data folder',
+      onDisk.filenameTemplate === '{provider} - {title}' && onDisk.settleMs === 150 && onDisk.theme === 'dark' &&
+      !('includeThinking' in onDisk) && !('pageSize' in onDisk) && !('selection' in onDisk), JSON.stringify(onDisk));
 
     /* ---------------- load the fixture into the real webview ------------ */
     const fixtureUrl = 'file:///' + fixture.replace(/\\/g, '/');
@@ -339,6 +406,191 @@ app.whenReady().then(async () => {
         (text.match(/^## (?!Contents)/gm) || []).length === 2,
         String((text.match(/^## (?!Contents)/gm) || []).length));
     }
+
+    /* ---------------- site rules: a site the app knows ------------------- */
+    const waitFor = (expr, ms = 30000) => run(`new Promise((resolve) => {
+      const started = Date.now();
+      const poll = setInterval(() => {
+        let value;
+        try { value = (${expr}); } catch { value = false; }
+        if (value || Date.now() - started > ${ms}) { clearInterval(poll); resolve(Boolean(value)); }
+      }, 200);
+    })`);
+    const openChat = async (address) => {
+      await run(`document.getElementById('urlInput').value = ${JSON.stringify(address)};
+        document.getElementById('urlForm').requestSubmit(); true`);
+      await new Promise((r) => setTimeout(r, 400));
+      await waitFor(`!document.getElementById('extractBtn').disabled && !document.getElementById('view').isLoading()`);
+      await new Promise((r) => setTimeout(r, 500));
+    };
+    const inPage = (code) => run(`document.getElementById('view').executeJavaScript(${JSON.stringify(code)}, true)`);
+    const readNow = async (expectClass) => {
+      await run(`document.getElementById('extractStatus').className = 'extract-status';
+        document.getElementById('extractBtn').click(); true`);
+      await waitFor(`document.getElementById('extractStatus').classList.contains(${JSON.stringify(expectClass)})`, 45000);
+      return run(`document.getElementById('extractStatus').innerText`);
+    };
+
+    await openChat('https://chatgpt.com/c/classic');
+    const badge = await run(`document.getElementById('providerBadge').textContent`);
+    check('rules: a known site shows its built-in rules', /ChatGPT · built-in rules/.test(badge), badge);
+    const classic = await readNow('ok');
+    check('rules: the read says which rules it used', /6 messages/.test(classic) && /built-in rules for ChatGPT/.test(classic),
+      classic.replace(/\s+/g, ' '));
+    await waitFor(`/Worked on/.test(document.getElementById('siteSub').textContent)`, 5000);
+    const card = await run(`document.getElementById('siteCard').innerText`);
+    check('rules: the site card shows what each colour found', /You\s*3/.test(card) && /AI\s*3/.test(card) && /Worked on/.test(card),
+      card.replace(/\s+/g, ' '));
+
+    /* ---------------- site rules: the site redesigns -------------------- */
+    await openChat('https://chatgpt.com/c/redesign');
+    const broken = await readNow('err');
+    check('repair: rules that no longer fit say so instead of guessing',
+      /found no messages/.test(broken) && /Fix the rules/.test(broken) && /Read once by guessing/.test(broken),
+      broken.replace(/\s+/g, ' '));
+    const noSidebar = await run(`document.getElementById('previewBox').hidden`);
+    check('repair: nothing from the sidebar is offered for export', noSidebar === true);
+
+    await run(`Array.from(document.querySelectorAll('#extractStatus button')).find((b) => /Fix the rules/.test(b.textContent)).click(); true`);
+    const panelOpen = await waitFor(`document.getElementById('siteNote').textContent.includes('panel is open')`, 10000);
+    check('repair: the teach panel opens on the page', panelOpen);
+    await new Promise((r) => setTimeout(r, 800));
+    const proposal = await inPage(`document.getElementById('__ace_teach__')?.shadowRoot?.querySelector('.panel')?.innerText || ''`);
+    check('repair: the panel offers a guess for the new layout', /old rules find nothing/.test(proposal) && /4\s+messages/.test(proposal),
+      proposal.replace(/\s+/g, ' ').slice(0, 160));
+    await inPage(`Array.from(document.getElementById('__ace_teach__').shadowRoot.querySelectorAll('button')).find((b) => b.textContent.includes('Save rules')).click(); true`);
+    const saving = await inPage(`(() => {
+      const root = document.getElementById('__ace_teach__').shadowRoot;
+      const name = root.querySelector('.saving input[type=text]');
+      const use = root.querySelector('.saving input[type=checkbox]');
+      return { name: name && name.value, use: use && use.checked, update: Boolean(root.querySelector('input[name=ace-save-as]')) };
+    })()`);
+    check('repair: saving offers a rule set of your own, named, and used from now on',
+      saving.name === 'My ChatGPT' && saving.use === true && !saving.update, JSON.stringify(saving));
+    await inPage(`Array.from(document.getElementById('__ace_teach__').shadowRoot.querySelectorAll('button')).find((b) => b.textContent.includes('Save these rules')).click(); true`);
+    await waitFor(`document.getElementById('extractStatus').classList.contains('ok')`, 45000);
+    const fixed = await run(`document.getElementById('extractStatus').innerText`);
+    check('repair: saving re-reads the chat with the new rules', /4 messages/.test(fixed) && /your rules “My ChatGPT”/.test(fixed),
+      fixed.replace(/\s+/g, ' '));
+    const savedRules = JSON.parse(fs.readFileSync(rulesFile, 'utf8'));
+    check('repair: saved as your own copy of the built-in rules, in the data folder',
+      savedRules.sets.length === 1 && savedRules.sets[0].basedOn === 'chatgpt', JSON.stringify(savedRules.sets.map((s) => s.name)));
+
+    /* ---------------- the rule manager ----------------------------------- */
+    await run(`document.querySelector('.tab[data-tab="rules"]').click(); true`);
+    await waitFor(`document.querySelectorAll('#userRules .sitegroup').length > 0`, 5000);
+    const manager = await run(`({
+      user: document.querySelectorAll('#userRules .sitegroup').length,
+      builtins: document.querySelectorAll('#builtinRules .sitegroup').length,
+      legend: document.querySelectorAll('#rulesLegend .item').length,
+      rows: Array.from(document.querySelectorAll('#userRules .sitegroup .setrow')).map((r) => r.innerText),
+      inUse: document.querySelector('#userRules .setrow.inuse')?.innerText || '',
+      here: document.querySelector('#userRules .sitegroup').classList.contains('here'),
+    })`);
+    check('manager: one card for ChatGPT, holding the built-in rules and yours', manager.user === 1 && manager.rows.length === 2 &&
+      /Built-in/i.test(manager.rows[0]) && /YOURS/i.test(manager.rows[1]), JSON.stringify(manager.rows).slice(0, 200));
+    check('manager: every other built-in site listed', manager.builtins >= 11, String(manager.builtins));
+    check('manager: colour legend shown', manager.legend >= 9, String(manager.legend));
+    check('manager: yours is the one in use, and it works', /My ChatGPT/.test(manager.inUse) && /Worked on/.test(manager.inUse) && manager.here,
+      manager.inUse.replace(/\s+/g, ' ').slice(0, 160));
+
+    const gptCard = `document.querySelector('#userRules .sitegroup')`;
+    await run(`${gptCard}.querySelectorAll('.setrow')[0].querySelector('input[type=radio]').click(); true`);
+    await waitFor(`/built-in rules/.test(document.getElementById('providerBadge').textContent)`, 5000);
+    const switched = await run(`({
+      inUse: ${gptCard}.querySelector('.setrow.inuse')?.innerText || '',
+      reset: Array.from(${gptCard}.querySelectorAll('button')).some((b) => /Back to the built-in/.test(b.textContent)),
+      choices: Array.from(document.querySelectorAll('#siteSwitch option')).map((o) => o.textContent),
+      switchShown: !document.getElementById('siteSwitchRow').hidden,
+      picked: document.getElementById('siteSwitch').selectedOptions[0]?.textContent,
+    })`);
+    check('profiles: the round button switches the site to the built-in rules', /Built-in/i.test(switched.inUse) && !switched.reset,
+      switched.inUse.replace(/\s+/g, ' ').slice(0, 120));
+    check('profiles: the site card offers a quick switch between them', switched.switchShown && switched.choices.length === 2 &&
+      /built-in/.test(switched.picked), JSON.stringify(switched));
+
+    const mineId = JSON.parse(fs.readFileSync(rulesFile, 'utf8')).sets[0].id;
+    await run(`const s = document.getElementById('siteSwitch'); s.value = ${JSON.stringify(mineId)};
+      s.dispatchEvent(new Event('change')); true`);
+    await waitFor(`/your rules/.test(document.getElementById('providerBadge').textContent)`, 5000);
+    check('profiles: the quick switch puts your rules back in use',
+      /your rules/.test(await run(`document.getElementById('providerBadge').textContent`)));
+
+    await waitFor(`Array.from(${gptCard}.querySelectorAll('button')).some((b) => /Back to the built-in/.test(b.textContent))`, 5000);
+    await run(`Array.from(${gptCard}.querySelectorAll('button')).find((b) => /Back to the built-in/.test(b.textContent)).click(); true`);
+    await waitFor(`/built-in rules/.test(document.getElementById('providerBadge').textContent)`, 5000);
+    const afterReset = JSON.parse(fs.readFileSync(rulesFile, 'utf8'));
+    check('profiles: back to the built-in rules keeps your rule set', afterReset.sets.length === 1 && afterReset.sets[0].isDefault === false,
+      JSON.stringify(afterReset.sets.map((s) => [s.name, s.isDefault])));
+
+    await run(`const row = ${gptCard}.querySelectorAll('.setrow')[0];
+      Array.from(row.querySelectorAll('button')).find((b) => b.textContent.startsWith('More')).click();
+      Array.from(row.querySelectorAll('button')).find((b) => b.textContent === 'Make a copy').click(); true`);
+    await waitFor(`${gptCard}.querySelectorAll('.setrow').length === 3`, 5000);
+    const copied = await run(`({
+      rows: Array.from(${gptCard}.querySelectorAll('.setrow')).map((r) => r.innerText.split('\\n')[0]),
+      inUse: ${gptCard}.querySelector('.setrow.inuse')?.innerText || '',
+    })`);
+    check('profiles: a copy of the built-in rules is a new rule set, not yet in use',
+      copied.rows.length === 3 && /Built-in/i.test(copied.inUse), JSON.stringify(copied.rows));
+    await run(`${gptCard}.querySelectorAll('.setrow')[1].querySelector('input[type=radio]').click(); true`);
+    await waitFor(`/your rules/.test(document.getElementById('providerBadge').textContent)`, 5000);
+
+    const gemini = `Array.from(document.querySelectorAll('#builtinRules .sitegroup')).find((c) => /Gemini/.test(c.innerText))`;
+    await run(`window.confirm = () => true;
+      const card = ${gemini};
+      Array.from(card.querySelectorAll('button')).find((b) => b.textContent.startsWith('More')).click();
+      Array.from(card.querySelectorAll('button')).find((b) => b.textContent === 'Remove').click(); true`);
+    await waitFor(`!document.getElementById('removedBox').hidden`, 5000);
+    const removed = await run(`({ count: document.getElementById('removedCount').textContent, still: Boolean(${gemini}) })`);
+    check('manager: a built-in set can be removed', removed.count === '1' && !removed.still, JSON.stringify(removed));
+    await run(`document.getElementById('restoreAllBtn').click(); true`);
+    await waitFor(`document.getElementById('removedBox').hidden`, 5000);
+    check('manager: and restored', Boolean(await run(`Boolean(${gemini})`)));
+
+    /* ---------------- help ---------------------------------------------- */
+    await run(`document.getElementById('manualBtn').click(); true`);
+    await waitFor(`document.getElementById('helpToc').children.length > 10`, 5000);
+    const manualState = await run(`({
+      open: !document.getElementById('helpOverlay').hidden,
+      toc: document.getElementById('helpToc').children.length,
+      anchors: document.querySelectorAll('#helpContent h2[id]').length,
+    })`);
+    check('help: the manual opens inside the app with a contents list',
+      manualState.open && manualState.toc > 10 && manualState.anchors > 5, JSON.stringify(manualState));
+    await run(`document.getElementById('helpSearch').value = 'teach';
+      document.getElementById('helpSearch').dispatchEvent(new Event('input')); true`);
+    await waitFor(`document.querySelectorAll('#helpToc .result').length > 0`, 3000);
+    check('help: the manual can be searched', (await run(`document.querySelectorAll('#helpToc .result').length`)) > 0);
+    await run(`document.getElementById('helpClose').click(); true`);
+
+    await run(`document.querySelector('.tab[data-tab="export"]').click();
+      document.getElementById('whatsThisBtn').click(); true`);
+    await run(`document.getElementById('extractBtn').click(); true`);
+    await new Promise((r) => setTimeout(r, 300));
+    const tip = await run(`({ text: document.getElementById('helpTip').innerText, reading: !document.getElementById('busy').hidden })`);
+    check('help: "What’s this?" explains a control instead of using it',
+      /Read this chat/.test(tip.text) && !tip.reading, JSON.stringify(tip));
+    await run(`document.getElementById('whatsThisDone').click(); true`);
+
+    /* ---------------- batch skips sites with no rules -------------------- */
+    await run(`document.querySelector('.tab[data-tab="batch"]').click();
+      document.getElementById('batchUrls').value = 'https://unknown-chat.example/c/1';
+      document.getElementById('batchGuess').checked = false;
+      for (const input of document.querySelectorAll('#formats input')) input.checked = input.value === 'md';
+      document.getElementById('batchBtn').click(); true`);
+    await waitFor(`/Finished/.test(document.getElementById('batchLog').innerText)`, 60000);
+    const skippedLog = await run(`document.getElementById('batchLog').innerText`);
+    check('batch: a site with no rules is skipped and the reason given',
+      /skipped: no rules for unknown-chat\.example/.test(skippedLog) && /0 exported, 1 skipped/.test(skippedLog),
+      skippedLog.replace(/\s+/g, ' '));
+    await run(`document.getElementById('batchGuess').checked = true;
+      document.getElementById('batchBtn').click(); true`);
+    await waitFor(`/Finished: 1 exported/.test(document.getElementById('batchLog').innerText)`, 60000);
+    const guessedLog = await run(`document.getElementById('batchLog').innerText`);
+    check('batch: with permission, it is exported and marked as guessed',
+      /layout guessed/.test(guessedLog) && /1 exported/.test(guessedLog), guessedLog.replace(/\s+/g, ' '));
+    await run(`document.querySelector('.tab[data-tab="export"]').click(); true`);
 
     /* ---------------- layout survives a short window --------------------- */
     // Regression guard: the sidebar used to grow past the bottom of a short

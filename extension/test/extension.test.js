@@ -13,6 +13,7 @@
 'use strict';
 
 const { app, BrowserWindow } = require('electron');
+const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
 const esbuild = require('esbuild');
@@ -87,7 +88,7 @@ function checkManifests() {
     const missing = referenced.filter((f) => !fs.existsSync(path.join(dist, f)));
     check(`${target}: every file the manifest names was built`, missing.length === 0, missing.join(', '));
 
-    for (const extra of ['panel.html', 'panel.js', 'panel.css', 'popup.js', 'popup.css', 'content.js', 'print.js']) {
+    for (const extra of ['panel.html', 'panel.js', 'panel.css', 'ui.css', 'popup.js', 'popup.css', 'content.js', 'print.js']) {
       if (!fs.existsSync(path.join(dist, extra))) {
         check(`${target}: ${extra} built`, false);
       }
@@ -131,7 +132,8 @@ async function bundleTestEntry() {
 function checkFilenames() {
   const src = fs.readFileSync(path.join(EXT, 'src', 'lib', 'download.js'), 'utf8');
   const mod = { exports: {} };
-  new Function('require', 'module', 'exports', src)(() => ({ api: {} }), mod, mod.exports);
+  const fakeRequire = (name) => (name === './folder' ? { ready: async () => null } : { api: {} });
+  new Function('require', 'module', 'exports', src)(fakeRequire, mod, mod.exports);
   const { safeSegment, asciiFallback } = mod.exports;
 
   const BACKSLASH = String.fromCharCode(92);
@@ -172,10 +174,77 @@ function checkFilenames() {
   check('filename: ascii fallback keeps the extension', asciiFallback('سلام.md').endsWith('.md'));
 }
 
+/* -------------------------------------------------------------- downloads */
+
+/**
+ * What happens to a file after it is handed to the browser. A download manager
+ * (IDM and the like) can take a download over and name it after the download's
+ * internal address — a long id — which looks exactly like the app ignoring its
+ * own filename template. That has to be noticed and said.
+ */
+async function checkDownloads() {
+  const src = fs.readFileSync(path.join(EXT, 'src', 'lib', 'download.js'), 'utf8');
+  const calls = [];
+  const fakeApi = { downloads: {} };
+  // No folder linked, unless a check below links one.
+  const fakeFolder = { ready: async () => null, saved: [] };
+  const mod = { exports: {} };
+  new Function('require', 'module', 'exports', src)((name) => (name === './folder' ? fakeFolder : { api: fakeApi }), mod, mod.exports);
+  const { downloadBlob } = mod.exports;
+  const wanted = 'AI Chat Exports/2026-10-28 - ChatGPT - Weekend plans.html';
+
+  fakeApi.downloads.download = async (opts) => {
+    calls.push(opts);
+    return 7;
+  };
+  fakeApi.downloads.search = async () => [
+    { id: 7, state: 'complete', filename: 'C:\\Users\\me\\Downloads\\3f2b7e0c-1a2b-4c5d-9e8f-0a1b2c3d4e5f.html' },
+  ];
+  const renamed = await downloadBlob(new Blob(['x']), wanted);
+  check('download: a file renamed by something else is reported',
+    renamed.renamedTo === '3f2b7e0c-1a2b-4c5d-9e8f-0a1b2c3d4e5f.html', JSON.stringify(renamed));
+
+  fakeApi.downloads.search = async () => [
+    { id: 7, state: 'complete', filename: 'C:\\Users\\me\\Downloads\\AI Chat Exports\\2026-10-28 - ChatGPT - Weekend plans (1).html' },
+  ];
+  const kept = await downloadBlob(new Blob(['x']), wanted);
+  check('download: a name the browser only numbered is not called a rename', !kept.renamedTo, JSON.stringify(kept));
+
+  fakeApi.downloads.download = async (opts) => {
+    calls.push(opts);
+    if (!opts.saveAs) throw new Error('Invalid filename');
+    return 9;
+  };
+  calls.length = 0;
+  await downloadBlob(new Blob(['x']), wanted);
+  const dialog = calls[calls.length - 1];
+  check('download: the save dialog is still offered the name, never left to use an id',
+    dialog.saveAs === true && /Weekend plans/.test(dialog.filename || ''), JSON.stringify(dialog));
+
+  // With a folder linked in Options, files go there instead of Downloads.
+  fakeFolder.ready = async () => ({ name: 'data' });
+  fakeFolder.saveFile = async (_handle, area, relative) => {
+    fakeFolder.saved.push(`${area}/${relative}`);
+    return `data/${area}/${relative}`;
+  };
+  calls.length = 0;
+  const intoFolder = await downloadBlob(new Blob(['x']), 'AI Chat Exports/chat_files/pic.png');
+  const rulesFile = await downloadBlob(new Blob(['{}']), 'AI Chat Exports/rules.json', { area: 'rules' });
+  check('download: with a folder linked, exports go to its exports folder, not Downloads',
+    intoFolder.linked && intoFolder.filename === 'data/exports/chat_files/pic.png' && calls.length === 0, JSON.stringify(intoFolder));
+  check('download: and exported rules to its rules folder', rulesFile.filename === 'data/rules/rules.json', JSON.stringify(rulesFile));
+  fakeFolder.saveFile = async () => {
+    throw new Error('The folder is gone');
+  };
+  const fellBack = await downloadBlob(new Blob(['x']), wanted);
+  check('download: a folder that went away falls back to Downloads', !fellBack.linked && calls.length > 0, JSON.stringify(fellBack));
+}
+
 app.whenReady().then(async () => {
   try {
     checkManifests();
     checkFilenames();
+    await checkDownloads();
 
     const win = new BrowserWindow({
       show: false,
@@ -208,7 +277,7 @@ app.whenReady().then(async () => {
       // Drive it exactly as the workspace page would.
       return await new Promise((resolve) => {
         const returned = listeners[0](
-          { type: 'ace:capture', settings: { embedImages: false, settleMs: 120 }, userPacks: {} },
+          { type: 'ace:capture', settings: { embedImages: false, settleMs: 120 }, rules: null },
           {},
           resolve
         );
@@ -225,7 +294,234 @@ app.whenReady().then(async () => {
       result?.messages?.map((m) => m.role).join(','));
     check('content script: reasoning captured separately',
       Boolean(result?.messages?.[1]?.thinkingHtml?.includes('partitioning first')));
-    check('content script: reports which pack it used', typeof result?.packSource === 'string', result?.packSource);
+    check('content script: with no rules sent, says it guessed', result?.source === 'guess', String(result?.source));
+
+    /* ---------- rules sent by the workspace drive the read ---------- */
+    const siteRules = require(path.join(ROOT, 'src', 'shared', 'rules.js'));
+    const chatgptRules = siteRules.compile(siteRules.builtinById('chatgpt'), 'https://chatgpt.com/');
+    const runCapture = async (fixture, rules) => {
+      await win.loadFile(path.join(ROOT, 'test', 'fixtures', fixture));
+      await new Promise((r) => setTimeout(r, 300));
+      return win.webContents.executeJavaScript(`(async () => {
+        const listeners = [];
+        globalThis.chrome = { runtime: { onMessage: { addListener: (fn) => listeners.push(fn) }, sendMessage: async () => ({}) } };
+        delete globalThis.__aceContentLoaded;
+        ${contentBundle}
+        return await new Promise((resolve) => {
+          listeners[0]({ type: 'ace:capture', settings: { embedImages: false, settleMs: 120 },
+            rules: ${JSON.stringify(rules)} }, {}, resolve);
+        });
+      })()`, true);
+    };
+    const withRules = await runCapture('fixture-chatgpt.html', chatgptRules);
+    check('content script: reads with the rules it is sent',
+      withRules?.result?.source === 'rules' && withRules.result.messages.length === 6 && withRules.result.health?.status === 'ok',
+      JSON.stringify({ source: withRules?.result?.source, n: withRules?.result?.messages?.length, health: withRules?.result?.health?.status }));
+    const stale = await runCapture('fixture-redesign.html', { ...chatgptRules, parts: chatgptRules.parts });
+    check('content script: rules that no longer fit report it, not a guess',
+      stale?.result?.ok === false && stale.result.reason === 'rules-found-nothing',
+      JSON.stringify({ ok: stale?.result?.ok, reason: stale?.result?.reason }));
+
+    /* ---------- the teach panel opens and closes on request ---------- */
+    const { PARTS } = require(path.join(ROOT, 'src', 'shared', 'parts.js'));
+    await win.loadFile(path.join(ROOT, 'test', 'fixtures', 'fixture-chatgpt.html'));
+    await new Promise((r) => setTimeout(r, 300));
+    const taught = await win.webContents.executeJavaScript(`(async () => {
+      const listeners = [];
+      globalThis.chrome = { runtime: { onMessage: { addListener: (fn) => listeners.push(fn) }, sendMessage: async () => ({}) } };
+      delete globalThis.__aceContentLoaded;
+      ${contentBundle}
+      const settled = new Promise((resolve) => {
+        listeners[0]({ type: 'ace:teach', options: { mode: 'show', parts: ${JSON.stringify(PARTS)},
+          rules: ${JSON.stringify(siteRules.builtinById('chatgpt'))}, siteName: 'chatgpt.test' } }, {}, resolve);
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      const panel = document.getElementById('__ace_teach__')?.shadowRoot?.querySelector('.panel')?.innerText || '';
+      listeners[0]({ type: 'ace:teachClose' }, {}, () => {});
+      const answer = await settled;
+      return { panel, answer, gone: !document.getElementById('__ace_teach__') };
+    })()`, true);
+    check('content script: shows the rules on the page', /Your messages\s+3/.test(taught?.panel || ''),
+      (taught?.panel || '').replace(/\s+/g, ' ').slice(0, 120));
+
+    /* ---------- the manual travels with the extension ---------- */
+    const panelBundle = fs.readFileSync(path.join(EXT, 'dist', 'chrome', 'panel.js'), 'utf8');
+    const manualText = fs.readFileSync(path.join(ROOT, 'docs', 'MANUAL.md'), 'utf8');
+    const firstHeading = (manualText.match(/^# (.+)$/m) || [])[1] || '';
+    check('workspace: the user manual is bundled', firstHeading.length > 0 && panelBundle.includes(firstHeading), firstHeading);
+
+    /* ---------- the built workspace page boots and works ---------- */
+    const workspace = new BrowserWindow({
+      show: false,
+      width: 1300,
+      height: 900,
+      webPreferences: {
+        preload: path.join(__dirname, 'fake-browser.js'),
+        contextIsolation: false,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+    const workspaceErrors = [];
+    workspace.webContents.on('console-message', (_e, level, message) => {
+      if (level >= 2 && !/Security Warning/.test(message)) workspaceErrors.push(message);
+    });
+    await workspace.loadFile(path.join(EXT, 'dist', 'chrome', 'panel.html'));
+    await new Promise((r) => setTimeout(r, 800));
+    const ws = (code) => workspace.webContents.executeJavaScript(code, true);
+
+    const booted = await ws(`({
+      legend: document.querySelectorAll('#rulesLegend .item').length,
+      tabs: document.querySelectorAll('.tab').length,
+      card: document.getElementById('siteName').textContent,
+    })`);
+    check('workspace: boots with the colour legend and every tab', booted.legend >= 9 && booted.tabs === 6, JSON.stringify(booted));
+    check('workspace: says no chat is attached', /No chat attached/.test(booted.card), booted.card);
+
+    // Rules the old one-click picker saved, as an earlier version left them.
+    await ws(`window.__fakeStorage.set('ace:userPacks', {
+      'chatgpt.com': { name: 'chatgpt.com', turnSelector: 'div.user-bubble', hosts: ['chatgpt.com'] },
+    }); document.querySelector('.tab[data-tab="rules"]').click(); true`);
+    await new Promise((r) => setTimeout(r, 500));
+    const managerState = await ws(`({
+      user: Array.from(document.querySelectorAll('#userRules .sitegroup')).map((c) => c.innerText),
+      builtins: document.querySelectorAll('#builtinRules .sitegroup').length,
+      inUse: document.querySelector('#userRules .setrow.inuse')?.innerText || '',
+      converted: Boolean(window.__fakeStorage.get('ace:siteRules')),
+      kept: Boolean(window.__fakeStorage.get('ace:userPacks')),
+    })`);
+    check('workspace: rules from the old picker are carried over and labelled',
+      managerState.user.length === 1 && /Old picker/i.test(managerState.user[0]),
+      JSON.stringify(managerState.user).slice(0, 160));
+    check('workspace: and still the ones in use for their site', /Old picker/i.test(managerState.inUse),
+      managerState.inUse.replace(/\s+/g, ' ').slice(0, 120));
+    check('workspace: the old rules are kept as a backup', managerState.converted && managerState.kept);
+    check('workspace: every other built-in site is listed', managerState.builtins >= 11, String(managerState.builtins));
+
+    await ws(`document.querySelector('#userRules .sitegroup .setrow input[type=radio]').click(); true`);
+    await new Promise((r) => setTimeout(r, 400));
+    const switchedBack = await ws(`({
+      stored: window.__fakeStorage.get('ace:siteRules').sets.map((s) => s.isDefault),
+      inUse: document.querySelector('#userRules .setrow.inuse')?.innerText || '',
+    })`);
+    check('workspace: choosing the built-in rules for a site is saved, keeping yours',
+      switchedBack.stored.length === 1 && switchedBack.stored[0] === false && /Built-in/i.test(switchedBack.inUse),
+      JSON.stringify(switchedBack).slice(0, 160));
+    await ws(`const row = document.querySelector('#userRules .sitegroup .setrow');
+      Array.from(row.querySelectorAll('button')).find((b) => b.textContent === 'Make a copy').click(); true`);
+    await new Promise((r) => setTimeout(r, 400));
+    const afterCopy = await ws(`window.__fakeStorage.get('ace:siteRules').sets.map((s) => ({ name: s.name, isDefault: s.isDefault }))`);
+    check('workspace: a copy of the built-in rules is saved as a new rule set, not in use',
+      afterCopy.length === 2 && afterCopy[1].isDefault === false && /copy/.test(afterCopy[1].name), JSON.stringify(afterCopy));
+
+    await ws(`window.confirm = () => true;
+      const card = Array.from(document.querySelectorAll('#builtinRules .sitegroup')).find((c) => /Gemini/.test(c.innerText));
+      Array.from(card.querySelectorAll('button')).find((b) => b.textContent === 'Remove').click(); true`);
+    await new Promise((r) => setTimeout(r, 400));
+    const afterRemove = await ws(`({
+      removed: document.getElementById('removedCount').textContent,
+      stored: window.__fakeStorage.get('ace:siteRules').builtins.gemini,
+    })`);
+    check('workspace: removing a built-in set is saved', afterRemove.removed === '1' && afterRemove.stored?.removed === true,
+      JSON.stringify(afterRemove));
+
+    /* ---------- a folder on the computer (Chrome, Edge) ---------- */
+    const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-ext-folder-'));
+    const linkRules = path.join(linkDir, 'rules', 'site-rules.json');
+    const linkSettings = path.join(linkDir, 'settings', 'extension-settings.json');
+    // Rules the desktop app saved there earlier.
+    fs.mkdirSync(path.dirname(linkRules), { recursive: true });
+    fs.writeFileSync(linkRules, JSON.stringify({
+      version: 3,
+      savedAt: '2026-01-01T00:00:00.000Z',
+      sets: [{ id: 'u-desktop-1', name: 'From the desktop', hosts: ['claude.ai'], isDefault: true,
+        parts: { user: ['.du'], assistant: ['.da'] }, updatedAt: '2026-01-01T00:00:00.000Z' }],
+      builtins: {},
+    }));
+    const before = await ws(`({
+      text: document.getElementById('folderText').textContent,
+      choose: !document.getElementById('folderChooseBtn').hidden,
+      sets: window.__fakeStorage.get('ace:siteRules').sets.length,
+    })`);
+    check('folder: without one, everything stays in the browser', /Only in this browser/.test(before.text) && before.choose,
+      JSON.stringify(before));
+    await ws(`window.__fakeFolderDir = ${JSON.stringify(linkDir)};
+      document.querySelector('.tab[data-tab="options"]').click();
+      document.getElementById('folderChooseBtn').click(); true`);
+    await new Promise((r) => setTimeout(r, 800));
+    const linked = await ws(`({
+      text: document.getElementById('folderText').textContent,
+      parts: document.querySelectorAll('#folderParts .datafolder-item').length,
+      sets: window.__fakeStorage.get('ace:siteRules').sets.map((s) => s.name),
+    })`);
+    const sharedRules = JSON.parse(fs.readFileSync(linkRules, 'utf8'));
+    check('folder: choosing one shows it in use, with its parts', /Also in the folder/.test(linked.text) && linked.parts === 3,
+      JSON.stringify(linked));
+    check('folder: rules from the browser and from the desktop app are both kept, in both places',
+      linked.sets.includes('From the desktop') && linked.sets.length === before.sets + 1 &&
+      sharedRules.sets.length === linked.sets.length, JSON.stringify({ browser: linked.sets, folder: sharedRules.sets.map((x) => x.name) }));
+    check('folder: the options file is written, holding only what was changed',
+      fs.existsSync(linkSettings) && JSON.stringify(JSON.parse(fs.readFileSync(linkSettings, 'utf8')).options) === '{}');
+
+    await ws(`const theme = document.getElementById('themeSel'); theme.value = 'dark';
+      theme.dispatchEvent(new Event('change', { bubbles: true })); true`);
+    await new Promise((r) => setTimeout(r, 900));
+    const optionsFile = JSON.parse(fs.readFileSync(linkSettings, 'utf8'));
+    check('folder: a changed option is written to the folder', JSON.stringify(optionsFile.options) === '{"theme":"dark"}',
+      JSON.stringify(optionsFile));
+
+    // The desktop app renames a rule set in the shared file.
+    const changed = JSON.parse(fs.readFileSync(linkRules, 'utf8'));
+    changed.sets.find((x) => x.id === 'u-desktop-1').name = 'Renamed in the desktop app';
+    changed.savedAt = new Date(Date.now() + 60_000).toISOString();
+    fs.writeFileSync(linkRules, JSON.stringify(changed));
+    await ws(`window.dispatchEvent(new Event('focus')); true`);
+    await new Promise((r) => setTimeout(r, 800));
+    const adopted = await ws(`window.__fakeStorage.get('ace:siteRules').sets.map((s) => s.name)`);
+    check('folder: changes the desktop app made there are taken in', adopted.includes('Renamed in the desktop app') &&
+      !adopted.includes('From the desktop'), JSON.stringify(adopted));
+
+    await ws(`document.getElementById('rulesExportBtn').click(); true`);
+    await new Promise((r) => setTimeout(r, 600));
+    const exportedRules = fs.readdirSync(path.join(linkDir, 'rules')).filter((f) => /^AI Chat Extractor rules .*\.json$/.test(f));
+    check('folder: exported rules are saved in its rules folder', exportedRules.length === 1, fs.readdirSync(path.join(linkDir, 'rules')).join(', '));
+
+    // After a browser restart it asks once more before writing.
+    await ws(`window.__folderPermission = 'prompt'; window.dispatchEvent(new Event('focus')); true`);
+    await new Promise((r) => setTimeout(r, 500));
+    const waiting = await ws(`({
+      text: document.getElementById('folderText').textContent,
+      allow: !document.getElementById('folderAllowBtn').hidden,
+    })`);
+    check('folder: after a restart it waits for permission, with a button to give it',
+      /waiting for your permission/.test(waiting.text) && waiting.allow, JSON.stringify(waiting));
+    await ws(`document.getElementById('folderAllowBtn').click(); true`);
+    await new Promise((r) => setTimeout(r, 500));
+    check('folder: and is in use again once allowed',
+      /Also in the folder/.test(await ws(`document.getElementById('folderText').textContent`)));
+
+    await ws(`window.confirm = () => true; document.getElementById('folderForgetBtn').click(); true`);
+    await new Promise((r) => setTimeout(r, 500));
+    check('folder: stopping leaves the folder and its files as they are',
+      /Only in this browser/.test(await ws(`document.getElementById('folderText').textContent`)) &&
+      fs.existsSync(linkRules) && fs.existsSync(linkSettings));
+
+    await ws(`document.getElementById('resetSettingsBtn').click(); true`);
+    await new Promise((r) => setTimeout(r, 400));
+    const reset = await ws(`({ theme: document.getElementById('themeSel').value,
+      kept: window.__fakeStorage.get('ace:settingsBeforeReset')?.theme })`);
+    check('options: reset puts them back to the defaults, keeping the old ones aside',
+      reset.theme === 'light' && reset.kept === 'dark', JSON.stringify(reset));
+
+    await ws(`document.getElementById('manualBtn').click(); true`);
+    await new Promise((r) => setTimeout(r, 500));
+    const manualOpen = await ws(`({ open: !document.getElementById('helpOverlay').hidden,
+      toc: document.getElementById('helpToc').children.length })`);
+    check('workspace: the manual opens inside the extension', manualOpen.open && manualOpen.toc > 10, JSON.stringify(manualOpen));
+    check('workspace: no unexpected console errors', workspaceErrors.length === 0, workspaceErrors.join(' | '));
+    workspace.destroy();
+    check('content script: closes the panel when asked', taught?.answer?.ok === true && taught.answer.result?.cancelled === true && taught.gone,
+      JSON.stringify(taught?.answer));
 
     /* ---------- describe / ping, used by the popup ---------- */
     const described = await win.webContents.executeJavaScript(`(async () => {
@@ -235,7 +531,7 @@ app.whenReady().then(async () => {
       ${contentBundle}
       let ping, describe;
       listeners[0]({ type: 'ace:ping' }, {}, (r) => { ping = r; });
-      listeners[0]({ type: 'ace:describe', userPacks: {} }, {}, (r) => { describe = r; });
+      listeners[0]({ type: 'ace:describe' }, {}, (r) => { describe = r; });
       return { ping, describe };
     })()`, true);
     check('content script: answers ping', described?.ping?.ok === true);

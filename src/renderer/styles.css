@@ -11,6 +11,9 @@
   --warn: #fbbf24;
   --err: #f87171;
   --radius: 9px;
+  /* The colours of the site-rule parts — see src/shared/parts.js. */
+  --you: #3b82f6;
+  --ai: #22c55e;
   color-scheme: dark;
 }
 
@@ -59,15 +62,26 @@ body {
 }
 .urlbar input:focus { outline: none; border-color: var(--accent); }
 
-.topmeta { flex: none; }
+.topmeta { flex: none; display: flex; align-items: center; gap: 8px; }
 .badge {
   display: inline-block; padding: 4px 10px; border-radius: 999px;
   background: var(--bg-3); border: 1px solid var(--line);
   color: var(--muted); font-size: 11px; white-space: nowrap;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis;
 }
 .badge.known { color: var(--ok); border-color: rgba(52,211,153,.4); }
 .badge.user { color: var(--accent); border-color: rgba(79,156,249,.45); }
 .badge.guess { color: var(--warn); border-color: rgba(251,191,36,.4); }
+.badge.off { color: #8b93a1; border-style: dashed; }
+.badge.broken { color: var(--err); border-color: rgba(248,113,113,.45); }
+
+.helpbtn {
+  background: var(--bg-3); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.helpbtn:hover { border-color: #3a4352; background: #232a35; }
+.helpbtn.round { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; font-weight: 700; }
+.helpbtn.on { background: #2b2410; border-color: var(--warn); color: #fcd34d; }
 
 /* -------------------------------------------------------------- layout */
 
@@ -146,8 +160,8 @@ webview:not([src]) { visibility: hidden; }
 
 .tabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
 .tab {
-  flex: 1; padding: 10px 4px; background: none; border: none; border-bottom: 2px solid transparent;
-  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
+  flex: 1; padding: 10px 2px; background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
 .tab:hover { color: var(--fg); }
 .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
@@ -262,13 +276,16 @@ textarea { resize: vertical; font-family: Consolas, "Cascadia Code", monospace; 
 
 .pv {
   display: flex; gap: 8px; align-items: flex-start; cursor: pointer;
-  border-left: 2px solid var(--line); padding: 6px 0 6px 9px; margin-bottom: 9px;
+  border-left: 3px solid var(--line); padding: 6px 0 6px 9px; margin-bottom: 9px;
 }
 .pv:hover { background: rgba(255,255,255,.02); }
 .pv > input { margin: 2px 0 0; accent-color: var(--accent); flex: none; }
 .pv .pvbody { min-width: 0; flex: 1; }
-.pv.assistant { border-left-color: var(--accent); }
+.pv.user { border-left-color: var(--you); }
+.pv.assistant { border-left-color: var(--ai); }
 .pv .who { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 3px; }
+.pv.user .who { color: #93b9ff; }
+.pv.assistant .who { color: #86e3a8; }
 .pv .txt {
   font-size: 11.5px; color: var(--fg); opacity: .85; white-space: pre-wrap;
   max-height: 72px; overflow: hidden; font-family: Consolas, monospace;
@@ -316,13 +333,6 @@ textarea { resize: vertical; font-family: Consolas, "Cascadia Code", monospace; 
 }
 .result .mini:hover { text-decoration: underline; }
 .note { color: var(--muted); font-size: 11.5px; margin: 2px 0 8px; }
-
-.packinfo, .packlist { margin-top: 10px; font-size: 11.5px; color: var(--muted); }
-.packrow {
-  display: flex; align-items: center; gap: 8px; padding: 6px 9px; margin-bottom: 5px;
-  background: var(--bg-3); border: 1px solid var(--line); border-radius: 6px;
-}
-.packrow code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-size: 11px; }
 
 .redaction { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 6px; margin-bottom: 6px; align-items: center; }
 .redaction input[type=text] {

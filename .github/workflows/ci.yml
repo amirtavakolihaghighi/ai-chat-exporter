@@ -25,7 +25,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - name: Conversion, filenames, selection, merge, bidi
+      - name: Conversion, site rules, options, data folder, help
         run: npm test
 
   extension-build:

@@ -1,46 +1,50 @@
 'use strict';
 
 const { api } = require('./browser');
+const rules = require('../../../src/shared/rules');
+const settingsLib = require('../../../src/shared/settings');
+const folder = require('./folder');
+// The defaults both apps start with, kept with the project; bundled at build time.
+const DEFAULTS_FILE = require('../../../config/default-settings.json');
 
 /**
  * Persistence for the extension.
  *
  * Two stores, chosen deliberately:
- *  - storage.local for settings and saved site rules. Small, synchronous to
- *    reason about, and readable from any extension context.
+ *  - storage.local for settings and site rules. Small, synchronous to reason
+ *    about, and readable from any extension context.
  *  - IndexedDB for the library. Conversations are far too big for the
  *    storage.local quota, and IndexedDB has no practical size ceiling.
+ *
+ * Settings and rules are also kept in a folder on the computer when the person
+ * links one (see ./folder.js) — the desktop app's data folder, say, so both
+ * share one set of rules. The browser's copy stays the working copy.
  */
 
 const SETTINGS_KEY = 'ace:settings';
-const PACKS_KEY = 'ace:userPacks';
+const SETTINGS_SAVED_KEY = 'ace:settingsSavedAt';
+const SETTINGS_BACKUP_KEY = 'ace:settingsBeforeReset';
+const RULES_KEY = 'ace:siteRules';
+// When the browser's copies and the folder's were last the same.
+const SYNC_KEY = 'ace:folderSyncedAt';
+// Where the old one-click picker kept its rules. Read once, to convert them;
+// never changed or removed, so it stays as a backup.
+const LEGACY_PACKS_KEY = 'ace:userPacks';
 const DB_NAME = 'ai-chat-extractor';
 const DB_VERSION = 1;
 const STORE_CAPTURES = 'captures';
 const STORE_LIBRARY = 'library';
 
-const DEFAULT_SETTINGS = {
-  filenameTemplate: '{date} - {provider} - {title}',
-  theme: 'light',
-  fontSize: 15,
-  includeMeta: true,
-  includeThinking: true,
-  includeSystem: true,
-  frontmatter: true,
-  embedImages: true,
-  assetMode: 'inline',
-  pageBreakPerTurn: false,
-  expandLinks: false,
-  jpegQuality: 92,
-  settleMs: 450,
-  maxScrollSteps: 400,
-  maxReadSeconds: 90,
-  lastFormats: ['md'],
-  redactions: [],
-  minCodeLines: 1,
-  assistantOnlyCode: false,
-  screenshotDelayMs: 550,
-};
+const DEFAULT_SETTINGS = settingsLib.defaultsFor('extension', DEFAULTS_FILE);
+
+// One change at a time — to the settings, the rules or the folder's copies —
+// so two arriving together cannot lose one.
+let queue = Promise.resolve();
+function inTurn(work) {
+  const run = queue.then(work);
+  queue = run.catch(() => {});
+  return run;
+}
 
 /* --------------------------------------------------------------- settings */
 
@@ -49,25 +53,144 @@ async function getSettings() {
   return { ...DEFAULT_SETTINGS, ...(stored[SETTINGS_KEY] || {}) };
 }
 
-async function saveSettings(patch) {
-  const merged = { ...(await getSettings()), ...(patch || {}) };
-  await api.storage.local.set({ [SETTINGS_KEY]: merged });
-  return merged;
+function saveSettings(patch) {
+  return inTurn(async () => {
+    const merged = { ...(await getSettings()), ...(patch || {}) };
+    await api.storage.local.set({ [SETTINGS_KEY]: merged, [SETTINGS_SAVED_KEY]: new Date().toISOString() });
+    await syncNow();
+    return merged;
+  });
 }
 
-/* ------------------------------------------------------------- user packs */
-
-async function getUserPacks() {
-  const stored = await api.storage.local.get(PACKS_KEY);
-  return stored[PACKS_KEY] || {};
+/** Every option back to its default; the ones there were are kept aside. */
+function resetSettings() {
+  return inTurn(async () => {
+    const stored = await api.storage.local.get(SETTINGS_KEY);
+    await api.storage.local.set({
+      [SETTINGS_BACKUP_KEY]: stored[SETTINGS_KEY] || {},
+      [SETTINGS_KEY]: {},
+      [SETTINGS_SAVED_KEY]: new Date().toISOString(),
+    });
+    await syncNow();
+    return getSettings();
+  });
 }
 
-async function saveUserPack(host, pack) {
-  const packs = await getUserPacks();
-  if (pack === null) delete packs[host];
-  else packs[host] = { ...packs[host], ...pack, host, updatedAt: new Date().toISOString() };
-  await api.storage.local.set({ [PACKS_KEY]: packs });
-  return packs;
+/* ------------------------------------------------------------- site rules */
+
+/**
+ * Site rules — see src/shared/rules.js, which both apps share. Rules saved by
+ * the old picker are converted the first time this is read.
+ */
+async function getSiteRules() {
+  const stored = await api.storage.local.get([RULES_KEY, LEGACY_PACKS_KEY]);
+  if (stored[RULES_KEY]) return rules.normaliseStore(stored[RULES_KEY]);
+  const legacy = stored[LEGACY_PACKS_KEY];
+  const store = legacy ? rules.migrateLegacyPacks(legacy) : rules.emptyStore();
+  // Saved straight away so the converted rules keep the same identity.
+  if (store.sets.length) await api.storage.local.set({ [RULES_KEY]: store });
+  return store;
+}
+
+/**
+ * Applies `change(store)` to the saved rules; resolves with what it returned.
+ * With a folder in use, its copy is taken in first — the desktop app may have
+ * changed it — so the change lands on the newest rules, and written after.
+ */
+function updateSiteRules(change) {
+  return inTurn(async () => {
+    await syncNow();
+    const store = await getSiteRules();
+    const value = change(store);
+    store.savedAt = new Date().toISOString();
+    await api.storage.local.set({ [RULES_KEY]: store });
+    await syncNow();
+    return value;
+  });
+}
+
+/* ------------------------------------------------------- the linked folder */
+
+/** Brings the rules in the browser and in the folder into step. */
+async function syncRules(handle, syncedAt) {
+  const local = await getSiteRules();
+  const file = await folder.readJson(handle, 'rules');
+  const fileStore = file.exists ? rules.normaliseStore(file.value) : null;
+  const action = folder.decide({
+    localAt: local.savedAt,
+    fileAt: fileStore && fileStore.savedAt,
+    syncedAt,
+    fileExists: Boolean(fileStore),
+  });
+  if (action === 'none') return syncedAt;
+  let result = local;
+  if (action === 'adopt') result = fileStore;
+  if (action === 'merge') result = { ...rules.mergeStores(local, fileStore), savedAt: new Date().toISOString() };
+  if (!result.savedAt) result = { ...result, savedAt: new Date().toISOString() };
+  if (action !== 'write') await api.storage.local.set({ [RULES_KEY]: result });
+  if (action !== 'adopt') await folder.writeJson(handle, 'rules', result);
+  return result.savedAt;
+}
+
+/** The same for the options; the folder's file holds only those that were changed. */
+async function syncSettings(handle, syncedAt) {
+  const stored = await api.storage.local.get([SETTINGS_KEY, SETTINGS_SAVED_KEY]);
+  const local = { ...DEFAULT_SETTINGS, ...(stored[SETTINGS_KEY] || {}) };
+  const localAt = stored[SETTINGS_SAVED_KEY] || '';
+  const file = await folder.readJson(handle, 'settings');
+  const fileValue = file.exists && file.value && typeof file.value === 'object' ? file.value : null;
+  const action = folder.decide({ localAt, fileAt: fileValue && fileValue.savedAt, syncedAt, fileExists: Boolean(fileValue) });
+  if (action === 'none') return syncedAt;
+  const fromFile = settingsLib.withDefaults(fileValue && fileValue.options, DEFAULT_SETTINGS);
+  let result = local;
+  let savedAt = localAt || new Date().toISOString();
+  if (action === 'adopt') {
+    result = fromFile;
+    savedAt = fileValue.savedAt;
+  }
+  if (action === 'merge') {
+    const fileNewer = (Date.parse(fileValue.savedAt || '') || 0) > (Date.parse(localAt) || 0);
+    const mine = settingsLib.changedFrom(local, DEFAULT_SETTINGS);
+    const theirs = settingsLib.changedFrom(fromFile, DEFAULT_SETTINGS);
+    result = settingsLib.withDefaults(fileNewer ? { ...mine, ...theirs } : { ...theirs, ...mine }, DEFAULT_SETTINGS);
+    savedAt = new Date().toISOString();
+  }
+  if (action !== 'write') await api.storage.local.set({ [SETTINGS_KEY]: result, [SETTINGS_SAVED_KEY]: savedAt });
+  if (action !== 'adopt') {
+    await folder.writeJson(handle, 'settings', { savedAt, options: settingsLib.changedFrom(result, DEFAULT_SETTINGS) });
+  }
+  return savedAt;
+}
+
+/** Runs inside the queue: brings both copies into step if the folder can be written now. */
+async function syncNow() {
+  const handle = await folder.ready();
+  if (!handle) return false;
+  const stored = await api.storage.local.get(SYNC_KEY);
+  const synced = stored[SYNC_KEY] || {};
+  const next = {
+    rules: await syncRules(handle, synced.rules),
+    settings: await syncSettings(handle, synced.settings),
+  };
+  await api.storage.local.set({ [SYNC_KEY]: next });
+  return true;
+}
+
+/**
+ * Brings the browser's copies and the folder's into step — when the workspace
+ * opens or comes back into view, and after a folder is chosen or allowed.
+ * Resolves with the folder's state (see folder.state()).
+ */
+async function syncFolder() {
+  await inTurn(() => syncNow().catch(() => false));
+  return folder.state();
+}
+
+/** Forgets the folder; the next one chosen is compared afresh. */
+async function forgetFolder() {
+  await folder.forget();
+  await api.storage.local.remove(SYNC_KEY);
+  return folder.state();
 }
 
 /* ------------------------------------------------------------- indexeddb */
@@ -256,6 +379,24 @@ async function searchLibrary(query, limit = 50) {
   return results;
 }
 
+/** The same page whatever its query string, fragment or trailing slash. */
+function comparableUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.origin + parsed.pathname.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/** The most recent export of this same chat, so a short read can be noticed. */
+async function lastExportOf(url) {
+  const target = comparableUrl(url);
+  if (!target) return null;
+  const hit = (await allLibraryRecords()).find((record) => comparableUrl(record.url) === target);
+  return hit ? { messageCount: hit.messageCount ?? (hit.messages || []).length, at: hit.at } : null;
+}
+
 async function deleteLibraryEntry(id) {
   const db = await openDb();
   await tx(db, STORE_LIBRARY, 'readwrite', (store) => store.delete(id));
@@ -272,8 +413,12 @@ module.exports = {
   DEFAULT_SETTINGS,
   getSettings,
   saveSettings,
-  getUserPacks,
-  saveUserPack,
+  resetSettings,
+  getSiteRules,
+  updateSiteRules,
+  syncFolder,
+  forgetFolder,
+  lastExportOf,
   putCapture,
   getCapture,
   deleteCapture,

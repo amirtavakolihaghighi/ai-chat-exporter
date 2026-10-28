@@ -176,11 +176,11 @@ when they find out by being alarmed.
 ## A standing note
 
 This tool reads other people's websites, and those websites change without
-warning. A provider pack that works today may break next month. That is the
-nature of the problem rather than a defect — it is why extraction degrades
-through a heuristic, a click-to-teach picker, and a screenshot mode instead of
-depending on any one approach.
+warning. Built-in rules that work today may break next month. That is the
+nature of the problem rather than a defect — it is why every read checks its
+rules and says when they stop working, and why anyone can fix them in the app by
+pointing at the page, instead of the app depending on any one approach.
 
 Saying so in the README is better than implying a guarantee that cannot be kept.
-When a site does change, `docs/site-report.js` turns the fix into a ten-minute
-job.
+When a site does change, a fixed rule set exported from the app, or
+`docs/site-report.js`, turns the built-in fix into a ten-minute job.

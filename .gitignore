@@ -14,8 +14,12 @@ test/ui-shot*.png
 extension/test/results.txt
 extension/test/.browser-bundle.js
 
+# The desktop app's data folder when run from the project: your settings,
+# site rules, library and exports. Never commit it: it holds your actual
+# conversations. (config/default-settings.json, the defaults, is tracked.)
+/data/
+
 # Exports land here when the output folder is left inside the project.
-# Never commit them: they are your actual conversations.
 AI Chat Exports/
 
 # editors and operating systems

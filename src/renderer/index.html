@@ -5,6 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';">
 <title>AI Chat Extractor</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="../shared/ui.css">
 </head>
 <body>
 
@@ -15,13 +16,16 @@
   </div>
 
   <form class="urlbar" id="urlForm">
-    <input id="urlInput" type="text" spellcheck="false" autocomplete="off"
+    <input id="urlInput" type="text" spellcheck="false" autocomplete="off" data-help="url-input"
            placeholder="Paste a chat share link — chatgpt.com/share/…, claude.ai/share/…, gemini, deepseek, grok, gapgpt…">
-    <button type="submit" class="btn primary" id="loadBtn">Load</button>
+    <button type="submit" class="btn primary" id="loadBtn" data-help="load">Load</button>
   </form>
 
   <div class="topmeta">
-    <span class="badge" id="providerBadge" title="Which selector pack matched this site">no page</span>
+    <span class="badge" id="providerBadge" data-help="rules-badge" title="Which rules read this site">no page</span>
+    <button class="helpbtn round" id="whatsThisBtn" data-help="help-whats-this"
+            title="What's this? Click any control to see what it does (Shift+F1)">?</button>
+    <button class="helpbtn" id="manualBtn" data-help="help-manual" title="User manual (F1)">Manual</button>
   </div>
 </header>
 
@@ -29,15 +33,15 @@
 
   <section class="viewer">
     <div class="viewer-toolbar">
-      <button class="icon" id="backBtn" title="Back" disabled>&#8592;</button>
-      <button class="icon" id="fwdBtn" title="Forward" disabled>&#8594;</button>
-      <button class="icon" id="reloadBtn" title="Reload">&#10227;</button>
+      <button class="icon" id="backBtn" title="Back" data-help="nav-back" disabled>&#8592;</button>
+      <button class="icon" id="fwdBtn" title="Forward" data-help="nav-forward" disabled>&#8594;</button>
+      <button class="icon" id="reloadBtn" title="Reload" data-help="nav-reload">&#10227;</button>
       <span class="url-display" id="urlDisplay">Nothing loaded</span>
       <span class="spacer"></span>
-      <button class="icon" id="zoomOutBtn" title="Zoom out">&minus;</button>
+      <button class="icon" id="zoomOutBtn" title="Zoom out" data-help="zoom-out">&minus;</button>
       <span class="zoomlabel" id="zoomLabel">100%</span>
-      <button class="icon" id="zoomInBtn" title="Zoom in">+</button>
-      <button class="icon" id="devtoolsBtn" title="Inspect the loaded page">&#9881;</button>
+      <button class="icon" id="zoomInBtn" title="Zoom in" data-help="zoom-in">+</button>
+      <button class="icon" id="devtoolsBtn" title="Inspect the loaded page" data-help="devtools">&#9881;</button>
     </div>
 
     <div class="viewer-stage" id="viewerStage">
@@ -49,8 +53,11 @@
            shared.</p>
         <ul class="hintlist">
           <li>Long chats are scrolled automatically so nothing is missed.</li>
-          <li>Collapsed reasoning blocks are unfolded before capture.</li>
-          <li>Images are downloaded and embedded, so expiring links still render.</li>
+          <li>Each site is read with <strong>rules</strong> you can see on the
+              page as coloured boxes — and fix yourself in seconds if the site
+              changes.</li>
+          <li>New to the app? Press <strong>Manual</strong> (F1), or <strong>?</strong>
+              and then click anything to see what it does.</li>
         </ul>
       </div>
       <webview id="view" partition="persist:aichats" allowpopups
@@ -61,21 +68,42 @@
 
   <aside class="sidebar">
     <nav class="tabs">
-      <button class="tab active" data-tab="export">Export</button>
-      <button class="tab" data-tab="options">Options</button>
-      <button class="tab" data-tab="batch">Batch</button>
-      <button class="tab" data-tab="merge">Merge</button>
-      <button class="tab" data-tab="library">Library</button>
+      <button class="tab active" data-tab="export" data-help="tab-export">Export</button>
+      <button class="tab" data-tab="rules" data-help="tab-rules">Site rules</button>
+      <button class="tab" data-tab="options" data-help="tab-options">Options</button>
+      <button class="tab" data-tab="batch" data-help="tab-batch">Batch</button>
+      <button class="tab" data-tab="merge" data-help="tab-merge">Merge</button>
+      <button class="tab" data-tab="library" data-help="tab-library">Library</button>
     </nav>
 
     <!-- ------------------------------------------------------- EXPORT -->
     <div class="panel active" data-panel="export">
-      <button class="btn big" id="extractBtn" disabled>Read this chat</button>
-      <div class="extract-status" id="extractStatus">Load a page first.</div>
+      <button class="btn big" id="extractBtn" data-help="read" disabled>Read this chat</button>
+      <div class="extract-status" id="extractStatus" data-help="read-status">Load a page first.</div>
 
-      <details class="preview" id="previewBox" hidden>
+      <section class="sitecard" id="siteCard" data-help="site-card">
+        <div class="sitecard-head">
+          <span class="dot" id="siteDot"></span>
+          <div class="sitecard-title">
+            <strong id="siteName">No page loaded</strong>
+            <small id="siteSub">Load a chat to see which rules read it.</small>
+          </div>
+        </div>
+        <div class="chips" id="siteChips"></div>
+        <label class="sitecard-switch" id="siteSwitchRow" data-help="site-switch" hidden>
+          <span>Rules to use</span>
+          <select id="siteSwitch"></select>
+        </label>
+        <div class="sitecard-note" id="siteNote" hidden></div>
+        <div class="row">
+          <button class="btn" id="showRulesBtn" data-help="show-rules" disabled>Show on page</button>
+          <button class="btn" id="teachBtn" data-help="teach" disabled>Teach this site</button>
+        </div>
+      </section>
+
+      <details class="preview" id="previewBox" data-help="preview" hidden>
         <summary>Preview and choose messages</summary>
-        <div class="selectbar">
+        <div class="selectbar" data-help="select-presets">
           <span id="selectionCount">all messages</span>
           <span class="spacer"></span>
           <button class="mini" data-select="all">all</button>
@@ -88,7 +116,7 @@
       </details>
 
       <h3>Formats</h3>
-      <div class="formats" id="formats">
+      <div class="formats" id="formats" data-help="formats">
         <label><input type="checkbox" value="pdf" checked><span>PDF</span></label>
         <label><input type="checkbox" value="md"><span>Markdown</span></label>
         <label><input type="checkbox" value="docx"><span>Word .docx</span></label>
@@ -106,7 +134,7 @@
       </p>
 
       <h3>PDF &amp; image style</h3>
-      <div class="radiorow">
+      <div class="radiorow" data-help="capture-mode">
         <label><input type="radio" name="captureMode" value="clean" checked>
           <span><strong>Clean document</strong><em>Retypeset, no site chrome, real page breaks</em></span></label>
         <label><input type="radio" name="captureMode" value="asShown">
@@ -115,7 +143,7 @@
           off-screen messages from the page entirely.</em></span></label>
       </div>
 
-      <div class="field">
+      <div class="field" data-help="opt-theme">
         <label for="themeSel">Document theme</label>
         <select id="themeSel">
           <option value="light">Light</option>
@@ -124,49 +152,74 @@
         </select>
       </div>
 
-      <div class="field">
+      <div class="field" data-help="save-to">
         <label for="outDir">Save to</label>
         <div class="row">
           <input id="outDir" type="text" spellcheck="false">
-          <button class="btn" id="browseBtn">Browse</button>
+          <button class="btn" id="browseBtn" data-help="browse">Browse</button>
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" data-help="filename-template">
         <label for="filenameTpl">Filename template</label>
         <input id="filenameTpl" type="text" spellcheck="false">
         <small>Tokens: {title} {provider} {host} {date} {time} {count} {id}</small>
       </div>
 
-      <button class="btn primary big" id="exportBtn" disabled>Export</button>
-      <label class="check"><input type="checkbox" id="openAfter"> Open the folder when done</label>
+      <button class="btn primary big" id="exportBtn" data-help="export" disabled>Export</button>
+      <label class="check" data-help="open-after"><input type="checkbox" id="openAfter"> Open the folder when done</label>
 
       <div class="results" id="results"></div>
+    </div>
 
-      <h3>When a site isn't recognised</h3>
-      <p class="muted small">
-        If the reader finds nothing or grabs the wrong thing, click below and
-        then click one message in the page. It works out a CSS selector matching
-        every message and saves it as a rule for that site, which is then used
-        for every later read — including after the site changes its markup.
-        Your rules are listed under <strong>Options → Saved site rules</strong>,
-        where you can remove any of them.
-      </p>
-      <button class="btn" id="pickBtn" disabled>Pick a message by hand</button>
-      <div class="packinfo" id="packInfo"></div>
+    <!-- --------------------------------------------------- SITE RULES -->
+    <div class="panel" data-panel="rules">
+      <h3>Site rules</h3>
+      <p class="muted small">Rules tell the app which parts of a chat page are
+        messages, so it reads the chat and not the menu around it. Each colour is
+        one kind of part — the same colours you see on the page when you press
+        <strong>Show on page</strong>.</p>
+      <div class="legend" id="rulesLegend" data-help="rules-legend"></div>
+      <details class="legend-more">
+        <summary>What each colour means</summary>
+        <div id="rulesLegendMore"></div>
+      </details>
+
+      <div class="row rules-tools">
+        <input id="rulesFilter" type="text" spellcheck="false" placeholder="Find a site…" data-help="rules-filter">
+        <button class="btn" id="rulesImportBtn" data-help="rules-import">Import…</button>
+        <button class="btn" id="rulesExportBtn" data-help="rules-export">Export…</button>
+      </div>
+
+      <h3>Sites with rules of your own</h3>
+      <p class="muted small">One card per site. A site can have several rule
+        sets — the round button picks the one that reads it; the green one is in
+        use.</p>
+      <div class="rulelist" id="userRules"></div>
+
+      <h3>Other sites the app knows</h3>
+      <p class="muted small">Read with the rules the app ships with. Make your
+        own copy to change them, or remove them altogether.</p>
+      <div class="rulelist" id="builtinRules"></div>
+
+      <details class="removed" id="removedBox" data-help="rules-restore" hidden>
+        <summary>Removed built-in rules (<span id="removedCount">0</span>)</summary>
+        <div class="rulelist" id="removedRules"></div>
+        <button class="btn" id="restoreAllBtn">Restore all</button>
+      </details>
     </div>
 
     <!-- ------------------------------------------------------ OPTIONS -->
     <div class="panel" data-panel="options">
       <h3>Content</h3>
-      <label class="check"><input type="checkbox" id="optThinking"> Include reasoning / thinking blocks</label>
-      <label class="check"><input type="checkbox" id="optSystem"> Include system &amp; tool messages</label>
-      <label class="check"><input type="checkbox" id="optMeta"> Include title, source URL and date</label>
-      <label class="check"><input type="checkbox" id="optFrontmatter"> YAML frontmatter in Markdown (Obsidian)</label>
+      <label class="check" data-help="opt-thinking"><input type="checkbox" id="optThinking"> Include reasoning / thinking blocks</label>
+      <label class="check" data-help="opt-system"><input type="checkbox" id="optSystem"> Include system &amp; tool messages</label>
+      <label class="check" data-help="opt-meta"><input type="checkbox" id="optMeta"> Include title, source URL and date</label>
+      <label class="check" data-help="opt-frontmatter"><input type="checkbox" id="optFrontmatter"> YAML frontmatter in Markdown (Obsidian)</label>
 
       <h3>Images</h3>
-      <label class="check"><input type="checkbox" id="optEmbed"> Download and embed images</label>
-      <div class="field">
+      <label class="check" data-help="opt-embed"><input type="checkbox" id="optEmbed"> Download and embed images</label>
+      <div class="field" data-help="opt-assets">
         <label for="assetMode">Where images go</label>
         <select id="assetMode">
           <option value="inline">Inside the file (single self-contained file)</option>
@@ -175,7 +228,7 @@
       </div>
 
       <h3>Page setup (PDF)</h3>
-      <div class="grid2">
+      <div class="grid2" data-help="opt-page">
         <div class="field">
           <label for="pageSize">Paper</label>
           <select id="pageSize">
@@ -191,28 +244,28 @@
           <label for="scaleIn">Scale</label>
           <input id="scaleIn" type="number" min="0.3" max="2" step="0.05">
         </div>
-        <div class="field">
+        <div class="field" data-help="opt-font">
           <label for="fontSizeIn">Body size (px)</label>
           <input id="fontSizeIn" type="number" min="10" max="24" step="1">
         </div>
       </div>
-      <label class="check"><input type="checkbox" id="optLandscape"> Landscape</label>
-      <label class="check"><input type="checkbox" id="optPageNums"> Page numbers in the footer</label>
-      <label class="check"><input type="checkbox" id="optPrintBg"> Print background colours</label>
-      <label class="check"><input type="checkbox" id="optBreakTurn"> Start every message on a new page</label>
-      <label class="check"><input type="checkbox" id="optExpandLinks"> Print link targets after link text</label>
+      <label class="check" data-help="opt-page"><input type="checkbox" id="optLandscape"> Landscape</label>
+      <label class="check" data-help="opt-page"><input type="checkbox" id="optPageNums"> Page numbers in the footer</label>
+      <label class="check" data-help="opt-page"><input type="checkbox" id="optPrintBg"> Print background colours</label>
+      <label class="check" data-help="opt-break"><input type="checkbox" id="optBreakTurn"> Start every message on a new page</label>
+      <label class="check" data-help="opt-links"><input type="checkbox" id="optExpandLinks"> Print link targets after link text</label>
 
       <h3>Images &amp; capture</h3>
       <div class="grid2">
-        <div class="field">
+        <div class="field" data-help="opt-jpeg">
           <label for="jpegQ">JPEG quality</label>
           <input id="jpegQ" type="number" min="10" max="100" step="1">
         </div>
-        <div class="field">
+        <div class="field" data-help="opt-settle">
           <label for="settleMs">Scroll settle (ms)</label>
           <input id="settleMs" type="number" min="100" max="3000" step="50">
         </div>
-        <div class="field">
+        <div class="field" data-help="opt-maxread">
           <label for="maxReadSeconds">Give up reading after (s)</label>
           <input id="maxReadSeconds" type="number" min="15" max="600" step="5">
         </div>
@@ -224,17 +277,36 @@
       <p class="muted small">Applied to every format before anything is written
         to disk. Useful for stripping keys, names or addresses out of a chat you
         are about to share.</p>
-      <div id="redactions"></div>
-      <button class="btn" id="addRedactionBtn">Add a rule</button>
+      <div id="redactions" data-help="redaction"></div>
+      <button class="btn" id="addRedactionBtn" data-help="redaction-add">Add a rule</button>
 
-      <h3>Saved site rules</h3>
-      <div id="userPacks" class="packlist"></div>
+      <h3>Where your files are kept</h3>
+      <div class="datafolder" data-help="data-folder">
+        <code class="datafolder-path" id="dataDir">…</code>
+        <small class="muted datafolder-note" id="dataDirNote"></small>
+        <div class="datafolder-list" id="dataFolders"></div>
+        <div class="row">
+          <button class="btn" id="dataOpenBtn" data-help="data-open">Open folder</button>
+          <button class="btn" id="dataChangeBtn" data-help="data-change">Change…</button>
+          <button class="btn" id="dataDefaultBtn" data-help="data-default">Use the default</button>
+        </div>
+        <p class="muted small">Sign-ins to chat sites and the built-in browser's
+          cache are not kept here. They stay in Windows' app-data folder, where
+          the browser locks them while the app runs — away from files you might
+          share or back up somewhere public.</p>
+      </div>
+
+      <h3>Start over</h3>
+      <p class="muted small">Puts every option on this tab and the Export tab back
+        as it was. Your rules, library and exported chats are not touched, and the
+        options as they were are kept in a backup file.</p>
+      <button class="btn" id="resetSettingsBtn" data-help="settings-reset">Reset all options to defaults</button>
 
       <h3>Privacy</h3>
       <p class="muted small">Everything runs locally. Nothing is uploaded, and
         the app makes no network requests of its own — only the pages you load
         do.</p>
-      <button class="btn danger" id="clearSessionBtn">Sign out of all chat sites</button>
+      <button class="btn danger" id="clearSessionBtn" data-help="sign-out">Sign out of all chat sites</button>
     </div>
 
     <!-- -------------------------------------------------------- BATCH -->
@@ -242,10 +314,12 @@
       <h3>Batch export</h3>
       <p class="muted small">One share link per line. Each is loaded, read and
         exported with the formats and options you chose on the Export tab.</p>
-      <textarea id="batchUrls" rows="8" spellcheck="false"
+      <textarea id="batchUrls" rows="8" spellcheck="false" data-help="batch-urls"
                 placeholder="https://chatgpt.com/share/…&#10;https://claude.ai/share/…"></textarea>
-      <button class="btn primary" id="batchBtn">Run batch</button>
-      <button class="btn" id="batchStopBtn" hidden>Stop</button>
+      <label class="check" data-help="batch-guess"><input type="checkbox" id="batchGuess">
+        Also export sites that have no rules (their layout is guessed)</label>
+      <button class="btn primary" id="batchBtn" data-help="batch-run">Run batch</button>
+      <button class="btn" id="batchStopBtn" data-help="batch-stop" hidden>Stop</button>
       <div class="batchlog" id="batchLog"></div>
     </div>
 
@@ -257,21 +331,21 @@
         every export is stored there automatically — or from
         <code>.json</code> files you exported earlier.</p>
 
-      <div class="field">
+      <div class="field" data-help="merge-title">
         <label for="mergeTitle">Document title</label>
         <input id="mergeTitle" type="text" spellcheck="false" value="Merged AI conversations">
       </div>
 
       <div class="row">
-        <button class="btn" id="mergePickBtn">Add .json files…</button>
-        <button class="btn" id="mergeClearBtn">Clear selection</button>
+        <button class="btn" id="mergePickBtn" data-help="merge-files">Add .json files…</button>
+        <button class="btn" id="mergeClearBtn" data-help="merge-clear">Clear selection</button>
       </div>
 
       <h3>From your library</h3>
-      <div class="mergelist" id="mergeList"></div>
+      <div class="mergelist" id="mergeList" data-help="merge-list"></div>
 
       <h3>Formats</h3>
-      <div class="formats" id="mergeFormats">
+      <div class="formats" id="mergeFormats" data-help="merge-formats">
         <label><input type="checkbox" value="pdf" checked><span>PDF</span></label>
         <label><input type="checkbox" value="md"><span>Markdown</span></label>
         <label><input type="checkbox" value="docx"><span>Word .docx</span></label>
@@ -279,7 +353,7 @@
         <label><input type="checkbox" value="txt"><span>Plain text</span></label>
       </div>
 
-      <button class="btn primary big" id="mergeRunBtn" disabled>Merge selected</button>
+      <button class="btn primary big" id="mergeRunBtn" data-help="merge-run" disabled>Merge selected</button>
       <div class="results" id="mergeResults"></div>
     </div>
 
@@ -288,11 +362,11 @@
       <h3>Search your exported chats</h3>
       <p class="muted small">Searches the full text of every conversation you
         have exported. All words must appear somewhere in the chat.</p>
-      <input id="librarySearch" type="text" spellcheck="false"
+      <input id="librarySearch" type="text" spellcheck="false" data-help="library-search"
              placeholder="e.g. postgres index, or docker compose">
       <div class="row" style="margin-top:10px">
-        <button class="btn" id="openFolderBtn">Open export folder</button>
-        <button class="btn danger" id="clearLibraryBtn">Clear library</button>
+        <button class="btn" id="openFolderBtn" data-help="library-folder">Open export folder</button>
+        <button class="btn danger" id="clearLibraryBtn" data-help="library-clear">Clear library</button>
       </div>
       <div class="historylist" id="historyList"></div>
     </div>
@@ -303,6 +377,30 @@
   <span id="status">Ready.</span>
 </footer>
 
+<!-- --------------------------------------------------------- HELP -->
+<div class="help-overlay" id="helpOverlay" hidden>
+  <div class="help-window" role="dialog" aria-label="User manual">
+    <header class="help-head">
+      <strong>User manual</strong>
+      <input id="helpSearch" type="search" spellcheck="false" placeholder="Search the manual…">
+      <button class="icon" id="helpClose" title="Close (Esc)">&#10005;</button>
+    </header>
+    <div class="help-body">
+      <nav class="help-toc" id="helpToc"></nav>
+      <article class="help-content" id="helpContent">Loading…</article>
+    </div>
+  </div>
+</div>
+
+<div class="help-tip" id="helpTip" hidden></div>
+<div class="whatsthis-bar" id="whatsThisBar" hidden>
+  <strong>What’s this?</strong> Click anything in the app to see what it does.
+  <button class="btn" id="whatsThisDone">Done</button>
+</div>
+
+<script src="../shared/parts.js"></script>
+<script src="../shared/help.js"></script>
+<script src="../shared/ui.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
