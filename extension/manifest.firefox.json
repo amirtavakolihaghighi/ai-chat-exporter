@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Chat Extractor",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "Export any AI chat — ChatGPT, Claude, Gemini, DeepSeek and more — to Markdown, Word, HTML, JSON, code files or images.",
   "browser_specific_settings": {
     "gecko": {

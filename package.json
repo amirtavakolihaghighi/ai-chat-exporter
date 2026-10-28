@@ -1,7 +1,7 @@
 {
   "name": "ai-chat-extractor",
   "productName": "AI Chat Extractor",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "Export AI chat conversations from ChatGPT, Claude, Gemini, DeepSeek and more to PDF, Word, Markdown, HTML, JSON, images or source files. Desktop app and browser extension.",
   "main": "src/main/main.js",
   "author": "Amir Tavakoli Haghighi",

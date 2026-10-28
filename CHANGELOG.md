@@ -4,11 +4,13 @@ All notable changes to this project are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
-**1.1.5 is the first published release.** The entries below it record the
+**1.1.5 was the first published release.** The entries below it record the
 development history leading to it and were never distributed, which is why the
-repository has one release and this file lists several versions.
+repository's releases start at 1.1.5 while this file lists earlier versions.
 
 ## [Unreleased]
+
+## [1.2.0] — 2026-10-28
 
 ### Fixed
 
@@ -292,5 +294,6 @@ First release: the Windows desktop app.
 - Embeds images, so exports survive expiring share links.
 - Redaction, batch export, export history, filename templates.
 
-[Unreleased]: https://github.com/amirtavakolihaghighi/ai-chat-exporter/compare/v1.1.5...HEAD
+[Unreleased]: https://github.com/amirtavakolihaghighi/ai-chat-exporter/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/amirtavakolihaghighi/ai-chat-exporter/compare/v1.1.5...v1.2.0
 [1.1.5]: https://github.com/amirtavakolihaghighi/ai-chat-exporter/releases/tag/v1.1.5
